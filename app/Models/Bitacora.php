@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class Bitacora extends Model
 {
@@ -14,8 +15,6 @@ class Bitacora extends Model
     protected $table = 'bitacora';
 
     public $timestamps = true;
-
-    const UPDATED_AT = null; // No se permite actualización
 
     protected $fillable = [
         'numero_registro',
@@ -38,34 +37,48 @@ class Bitacora extends Model
         'firma_digital',
     ];
 
-    protected $casts = [
-        'datos_anteriores'      => 'array',
-        'datos_nuevos'          => 'array',
-        'metadatos_seguridad'   => 'array',
-        'created_at'            => 'datetime',
+    protected $hidden = [
+        'firma_digital',
     ];
+
+    protected $casts = [
+        'datos_anteriores' => 'array',
+        'datos_nuevos' => 'array',
+        'metadatos_seguridad' => 'array',
+        'ip_address' => 'string',
+        'user_agent' => 'string',
+        'dispositivo' => 'string',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
+
+    public const TIPO_EVENTO_ADMINISTRACION = 'administracion_sistema';
+    public const TIPO_EVENTO_UCC = 'eventos_ucc';
+    public const TIPO_EVENTO_PROGRAMAS = 'eventos_programas';
+    public const TIPO_EVENTO_COMUNICACION = 'eventos_comunicacion';
+    public const TIPO_EVENTO_OPERACIONES = 'operaciones_cotidianas';
+    public const TIPO_EVENTO_VERIFICACIONES = 'verificaciones_autoridad';
+    public const TIPO_EVENTO_INCONSISTENCIAS = 'inconsistencias_volumetricas';
+    public const TIPO_EVENTO_SEGURIDAD = 'seguridad';
 
     protected static function boot()
     {
         parent::boot();
 
         static::creating(function ($model) {
-            // Generar hash secuencial
-            $lastHash = DB::table('bitacora_hash_sequence')
-                ->where('id', 1)
-                ->value('last_hash');
+            if (empty($model->numero_registro)) {
+                $model->numero_registro = 'BIT-' . Str::uuid();
+            }
 
-            $model->hash_anterior = $lastHash;
-            $model->hash_actual = hash('sha256', ($lastHash ?? '') . $model->descripcion . now());
-            
-            // Actualizar el último hash
-            DB::table('bitacora_hash_sequence')
-                ->where('id', 1)
-                ->update(['last_hash' => $model->hash_actual]);
-
-            // Asignar usuario actual si no está definido
             if (!$model->usuario_id && Auth::check()) {
                 $model->usuario_id = Auth::id();
+            }
+
+            // El hash se maneja mediante trigger en MySQL
+            if (DB::connection()->getDriverName() !== 'mysql') {
+                $lastHash = DB::table('bitacora')->max('hash_actual');
+                $model->hash_anterior = $lastHash;
+                $model->hash_actual = hash('sha256', ($lastHash ?? '') . $model->descripcion . now());
             }
         });
 

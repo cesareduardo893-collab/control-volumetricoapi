@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Alarma extends Model
 {
@@ -37,19 +38,40 @@ class Alarma extends Model
     ];
 
     protected $casts = [
-        'fecha_hora'                => 'datetime',
-        'datos_contexto'            => 'array',
-        'diferencia_detectada'      => 'decimal:4',
-        'porcentaje_diferencia'     => 'decimal:4',
-        'limite_permitido'          => 'decimal:4',
-        'diagnostico_automatico'    => 'array',
-        'recomendaciones'           => 'array',
-        'atendida'                  => 'boolean',
-        'fecha_atencion'            => 'datetime',
+        'fecha_hora' => 'datetime',
+        'datos_contexto' => 'array',
+        'diferencia_detectada' => 'decimal:4',
+        'porcentaje_diferencia' => 'decimal:4',
+        'limite_permitido' => 'decimal:4',
+        'diagnostico_automatico' => 'array',
+        'recomendaciones' => 'array',
+        'atendida' => 'boolean',
+        'fecha_atencion' => 'datetime',
         'requiere_atencion_inmediata' => 'boolean',
-        'fecha_limite_atencion'     => 'datetime',
-        'historial_cambios_estado'  => 'array',
+        'fecha_limite_atencion' => 'datetime',
+        'historial_cambios_estado' => 'array',
     ];
+
+    public const GRAVEDAD_BAJA = 'BAJA';
+    public const GRAVEDAD_MEDIA = 'MEDIA';
+    public const GRAVEDAD_ALTA = 'ALTA';
+    public const GRAVEDAD_CRITICA = 'CRITICA';
+
+    public const ESTADO_PENDIENTE = 'PENDIENTE';
+    public const ESTADO_EN_PROCESO = 'EN_PROCESO';
+    public const ESTADO_RESUELTA = 'RESUELTA';
+    public const ESTADO_IGNORADA = 'IGNORADA';
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->numero_registro)) {
+                $model->numero_registro = 'AL-' . Str::uuid();
+            }
+        });
+    }
 
     public function atendidaPor()
     {

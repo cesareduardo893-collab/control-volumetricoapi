@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class CertificadoVerificacion extends Model
 {
@@ -36,17 +37,31 @@ class CertificadoVerificacion extends Model
     ];
 
     protected $casts = [
-        'fecha_emision'                 => 'date',
-        'fecha_inicio_verificacion'     => 'date',
-        'fecha_fin_verificacion'        => 'date',
-        'tabla_cumplimiento'            => 'array',
-        'hallazgos'                     => 'array',
-        'recomendaciones_especificas'   => 'array',
-        'archivos_adicionales'          => 'array',
-        'vigente'                       => 'boolean',
-        'fecha_caducidad'               => 'date',
+        'fecha_emision' => 'date',
+        'fecha_inicio_verificacion' => 'date',
+        'fecha_fin_verificacion' => 'date',
+        'tabla_cumplimiento' => 'array',
+        'hallazgos' => 'array',
+        'recomendaciones_especificas' => 'array',
+        'archivos_adicionales' => 'array',
+        'vigente' => 'boolean',
+        'fecha_caducidad' => 'date',
         'requiere_verificacion_extraordinaria' => 'boolean',
     ];
+
+    public const RESULTADO_ACREDITADO = 'acreditado';
+    public const RESULTADO_NO_ACREDITADO = 'no_acreditado';
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->folio)) {
+                $model->folio = 'CERT-' . Str::uuid();
+            }
+        });
+    }
 
     public function contribuyente()
     {

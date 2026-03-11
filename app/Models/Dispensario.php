@@ -26,6 +26,10 @@ class Dispensario extends Model
         'activo' => 'boolean',
     ];
 
+    public const ESTADO_OPERATIVO = 'OPERATIVO';
+    public const ESTADO_MANTENIMIENTO = 'MANTENIMIENTO';
+    public const ESTADO_FUERA_SERVICIO = 'FUERA_SERVICIO';
+
     public function instalacion()
     {
         return $this->belongsTo(Instalacion::class);

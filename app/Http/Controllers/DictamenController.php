@@ -21,9 +21,7 @@ class DictamenController extends BaseController
         $query = Dictamen::with([
             'contribuyente',
             'instalacion',
-            'producto',
-            'laboratorio',
-            'tecnico'
+            'producto'
         ]);
 
         // Filtros
@@ -39,24 +37,16 @@ class DictamenController extends BaseController
             $query->where('producto_id', $request->producto_id);
         }
 
-        if ($request->has('laboratorio_id')) {
-            $query->where('laboratorio_id', $request->laboratorio_id);
-        }
-
         if ($request->has('folio')) {
             $query->where('folio', 'LIKE', "%{$request->folio}%");
         }
 
-        if ($request->has('tipo_dictamen')) {
-            $query->where('tipo_dictamen', $request->tipo_dictamen);
+        if ($request->has('numero_lote')) {
+            $query->where('numero_lote', 'LIKE', "%{$request->numero_lote}%");
         }
 
-        if ($request->has('estado')) {
-            $query->where('estado', $request->estado);
-        }
-
-        if ($request->has('resultado')) {
-            $query->where('resultado', $request->resultado);
+        if ($request->has('laboratorio_rfc')) {
+            $query->where('laboratorio_rfc', 'LIKE', "%{$request->laboratorio_rfc}%");
         }
 
         if ($request->has('fecha_emision_inicio')) {
@@ -67,29 +57,18 @@ class DictamenController extends BaseController
             $query->where('fecha_emision', '<=', Carbon::parse($request->fecha_emision_fin));
         }
 
-        if ($request->has('fecha_vencimiento_inicio')) {
-            $query->where('fecha_vencimiento', '>=', Carbon::parse($request->fecha_vencimiento_inicio));
-        }
-
-        if ($request->has('fecha_vencimiento_fin')) {
-            $query->where('fecha_vencimiento', '<=', Carbon::parse($request->fecha_vencimiento_fin));
+        if ($request->has('estado')) {
+            $query->where('estado', $request->estado);
         }
 
         if ($request->boolean('vigente')) {
-            $query->where('fecha_vencimiento', '>=', now())
-                  ->where('estado', 'EMITIDO')
-                  ->where('resultado', 'CONFORME');
-        }
-
-        if ($request->boolean('proximo_vencer')) {
-            $query->whereBetween('fecha_vencimiento', [now(), now()->addDays(30)])
-                  ->where('estado', 'EMITIDO');
+            $query->where('estado', 'VIGENTE');
         }
 
         $dictamenes = $query->orderBy('fecha_emision', 'desc')
             ->paginate($request->get('per_page', 15));
 
-        return $this->sendResponse($dictamenes, 'Dictámenes obtenidos exitosamente');
+        return $this->success($dictamenes, 'Dictámenes obtenidos exitosamente');
     }
 
     /**
@@ -98,146 +77,134 @@ class DictamenController extends BaseController
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
+            'folio' => 'required|string|max:255|unique:dictamenes,folio',
+            'numero_lote' => 'required|string|max:255|unique:dictamenes,numero_lote',
             'contribuyente_id' => 'required|exists:contribuyentes,id',
+            'laboratorio_rfc' => 'required|string|size:13',
+            'laboratorio_nombre' => 'required|string|max:255',
+            'laboratorio_numero_acreditacion' => 'required|string|max:255',
+            'fecha_emision' => 'required|date',
+            'fecha_toma_muestra' => 'required|date|before_or_equal:fecha_emision',
+            'fecha_pruebas' => 'required|date|before_or_equal:fecha_emision',
+            'fecha_resultados' => 'required|date|before_or_equal:fecha_emision',
             'instalacion_id' => 'nullable|exists:instalaciones,id',
+            'ubicacion_muestra' => 'nullable|string|max:255',
             'producto_id' => 'required|exists:productos,id',
-            'laboratorio_id' => 'required|exists:laboratorios,id',
-            'tecnico_id' => 'required|exists:tecnicos,id',
-            'folio' => 'required|string|max:50|unique:dictamenes,folio',
-            'tipo_dictamen' => 'required|in:COMPOSICION,CALIDAD,VERIFICACION,CERTIFICACION,RECERTIFICACION',
-            'fecha_muestreo' => 'required|date',
-            'fecha_analisis' => 'required|date|after_or_equal:fecha_muestreo',
-            'fecha_emision' => 'required|date|after_or_equal:fecha_analisis',
-            'fecha_vencimiento' => 'required|date|after:fecha_emision',
-            'lote' => 'required|string|max:100',
-            'cantidad_muestra' => 'required|numeric|min:0',
-            'unidad_muestra' => 'required|in:LITROS,ML,KG,G',
-            'condiciones_muestreo' => 'required|array',
-            'condiciones_muestreo.temperatura' => 'required|numeric',
-            'condiciones_muestreo.presion' => 'required|numeric',
-            'condiciones_muestreo.humedad' => 'nullable|numeric',
-            'condiciones_muestreo.ubicacion' => 'required|string',
-            'condiciones_muestreo.responsable' => 'required|string',
-            'resultados' => 'required|array',
-            'resultados.densidad' => 'nullable|numeric',
-            'resultados.api_gravedad' => 'nullable|numeric',
-            'resultados.viscosidad' => 'nullable|numeric',
-            'resultados.azufre' => 'nullable|numeric',
-            'resultados.poder_calorifico' => 'nullable|numeric',
-            'resultados.octanaje_ron' => 'nullable|numeric',
-            'resultados.octanaje_mon' => 'nullable|numeric',
-            'resultados.cetano' => 'nullable|numeric',
-            'resultados.punto_inflamacion' => 'nullable|numeric',
-            'resultados.punto_ebullicion' => 'nullable|numeric',
-            'resultados.presion_vapor' => 'nullable|numeric',
-            'resultados.composicion' => 'nullable|array',
-            'resultados.composicion.*.componente' => 'required_with:resultados.composicion|string',
-            'resultados.composicion.*.porcentaje' => 'required_with:resultados.composicion|numeric|min:0|max:100',
-            'resultados.contaminantes' => 'nullable|array',
-            'resultados.contaminantes.*.nombre' => 'required_with:resultados.contaminantes|string',
-            'resultados.contaminantes.*.valor' => 'required_with:resultados.contaminantes|numeric',
-            'resultados.contaminantes.*.unidad' => 'required_with:resultados.contaminantes|string',
-            'resultados.contaminantes.*.limite' => 'nullable|numeric',
-            'especificacion_aplicable' => 'required|string|max:255',
-            'resultado' => 'required|in:CONFORME,NO_CONFORME,CON_OBSERVACIONES',
-            'observaciones' => 'nullable|string|max:1000',
-            'conclusiones' => 'nullable|string|max:1000',
-            'recomendaciones' => 'nullable|string|max:1000',
-            'metodos_utilizados' => 'required|array',
-            'metodos_utilizados.*.parametro' => 'required|string',
-            'metodos_utilizados.*.metodo' => 'required|string',
-            'metodos_utilizados.*.norma' => 'nullable|string',
-            'equipos_utilizados' => 'required|array',
-            'equipos_utilizados.*.nombre' => 'required|string',
-            'equipos_utilizados.*.modelo' => 'required|string',
-            'equipos_utilizados.*.serie' => 'required|string',
-            'equipos_utilizados.*.calibracion' => 'required|date',
-            'incertidumbre' => 'nullable|numeric',
-            'trazabilidad' => 'nullable|string|max:500',
-            'archivo_dictamen' => 'nullable|file|mimes:pdf|max:20480',
-            'archivos_anexos' => 'nullable|array',
-            'archivos_anexos.*' => 'file|mimes:pdf,doc,docx,xls,xlsx,jpg,png|max:10240',
-            'metadata' => 'nullable|array'
+            'volumen_muestra' => 'required|numeric|min:0',
+            'unidad_medida_muestra' => 'required|string|max:10',
+            'metodo_muestreo' => 'required|string|max:255',
+            'metodo_ensayo' => 'required|string|max:255',
+            'metodos_aplicados' => 'nullable|array',
+            'densidad_api' => 'nullable|numeric|min:0|max:100',
+            'azufre' => 'nullable|numeric|min:0|max:100',
+            'clasificacion_azufre' => 'nullable|string|max:255',
+            'clasificacion_api' => 'nullable|string|max:255',
+            'composicion_molar' => 'nullable|array',
+            'propiedades_fisicas' => 'nullable|array',
+            'propiedades_quimicas' => 'nullable|array',
+            'poder_calorifico' => 'nullable|numeric|min:0',
+            'poder_calorifico_superior' => 'nullable|numeric|min:0',
+            'poder_calorifico_inferior' => 'nullable|numeric|min:0',
+            'octanaje_ron' => 'nullable|numeric|min:0|max:120',
+            'octanaje_mon' => 'nullable|numeric|min:0|max:120',
+            'indice_octano' => 'nullable|numeric|min:0|max:120',
+            'contiene_bioetanol' => 'boolean',
+            'porcentaje_bioetanol' => 'nullable|numeric|min:0|max:100',
+            'contiene_biodiesel' => 'boolean',
+            'porcentaje_biodiesel' => 'nullable|numeric|min:0|max:100',
+            'contiene_bioturbosina' => 'boolean',
+            'porcentaje_bioturbosina' => 'nullable|numeric|min:0|max:100',
+            'fame' => 'nullable|numeric|min:0',
+            'porcentaje_propano' => 'nullable|numeric|min:0|max:100',
+            'porcentaje_butano' => 'nullable|numeric|min:0|max:100',
+            'propano_normalizado' => 'nullable|numeric|min:0|max:100',
+            'butano_normalizado' => 'nullable|numeric|min:0|max:100',
+            'composicion_normalizada' => 'nullable|array',
+            'archivo_pdf' => 'nullable|string|max:255',
+            'archivo_xml' => 'nullable|string|max:255',
+            'archivo_json' => 'nullable|string|max:255',
+            'archivos_adicionales' => 'nullable|array',
+            'estado' => 'required|in:VIGENTE,CADUCADO,CANCELADO',
+            'observaciones' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            // Guardar archivo principal
-            $rutaArchivo = null;
-            if ($request->hasFile('archivo_dictamen')) {
-                $rutaArchivo = $request->file('archivo_dictamen')
-                    ->store("dictamenes/{$request->contribuyente_id}", 'public');
-            }
-
-            // Guardar archivos anexos
-            $anexos = [];
-            if ($request->hasFile('archivos_anexos')) {
-                foreach ($request->file('archivos_anexos') as $index => $archivo) {
-                    $ruta = $archivo->store("dictamenes/{$request->contribuyente_id}/anexos", 'public');
-                    $anexos[] = [
-                        'nombre_original' => $archivo->getClientOriginalName(),
-                        'ruta' => $ruta,
-                        'tipo' => $archivo->getMimeType(),
-                        'tamano' => $archivo->getSize()
-                    ];
-                }
-            }
-
             $dictamen = Dictamen::create([
-                'contribuyente_id' => $request->contribuyente_id,
-                'instalacion_id' => $request->instalacion_id,
-                'producto_id' => $request->producto_id,
-                'laboratorio_id' => $request->laboratorio_id,
-                'tecnico_id' => $request->tecnico_id,
                 'folio' => $request->folio,
-                'tipo_dictamen' => $request->tipo_dictamen,
-                'fecha_muestreo' => $request->fecha_muestreo,
-                'fecha_analisis' => $request->fecha_analisis,
+                'numero_lote' => $request->numero_lote,
+                'contribuyente_id' => $request->contribuyente_id,
+                'laboratorio_rfc' => $request->laboratorio_rfc,
+                'laboratorio_nombre' => $request->laboratorio_nombre,
+                'laboratorio_numero_acreditacion' => $request->laboratorio_numero_acreditacion,
                 'fecha_emision' => $request->fecha_emision,
-                'fecha_vencimiento' => $request->fecha_vencimiento,
-                'lote' => $request->lote,
-                'cantidad_muestra' => $request->cantidad_muestra,
-                'unidad_muestra' => $request->unidad_muestra,
-                'condiciones_muestreo' => $request->condiciones_muestreo,
-                'resultados' => $request->resultados,
-                'especificacion_aplicable' => $request->especificacion_aplicable,
-                'resultado' => $request->resultado,
+                'fecha_toma_muestra' => $request->fecha_toma_muestra,
+                'fecha_pruebas' => $request->fecha_pruebas,
+                'fecha_resultados' => $request->fecha_resultados,
+                'instalacion_id' => $request->instalacion_id,
+                'ubicacion_muestra' => $request->ubicacion_muestra,
+                'producto_id' => $request->producto_id,
+                'volumen_muestra' => $request->volumen_muestra,
+                'unidad_medida_muestra' => $request->unidad_medida_muestra,
+                'metodo_muestreo' => $request->metodo_muestreo,
+                'metodo_ensayo' => $request->metodo_ensayo,
+                'metodos_aplicados' => $request->metodos_aplicados,
+                'densidad_api' => $request->densidad_api,
+                'azufre' => $request->azufre,
+                'clasificacion_azufre' => $request->clasificacion_azufre,
+                'clasificacion_api' => $request->clasificacion_api,
+                'composicion_molar' => $request->composicion_molar,
+                'propiedades_fisicas' => $request->propiedades_fisicas,
+                'propiedades_quimicas' => $request->propiedades_quimicas,
+                'poder_calorifico' => $request->poder_calorifico,
+                'poder_calorifico_superior' => $request->poder_calorifico_superior,
+                'poder_calorifico_inferior' => $request->poder_calorifico_inferior,
+                'octanaje_ron' => $request->octanaje_ron,
+                'octanaje_mon' => $request->octanaje_mon,
+                'indice_octano' => $request->indice_octano,
+                'contiene_bioetanol' => $request->boolean('contiene_bioetanol', false),
+                'porcentaje_bioetanol' => $request->porcentaje_bioetanol,
+                'contiene_biodiesel' => $request->boolean('contiene_biodiesel', false),
+                'porcentaje_biodiesel' => $request->porcentaje_biodiesel,
+                'contiene_bioturbosina' => $request->boolean('contiene_bioturbosina', false),
+                'porcentaje_bioturbosina' => $request->porcentaje_bioturbosina,
+                'fame' => $request->fame,
+                'porcentaje_propano' => $request->porcentaje_propano,
+                'porcentaje_butano' => $request->porcentaje_butano,
+                'propano_normalizado' => $request->propano_normalizado,
+                'butano_normalizado' => $request->butano_normalizado,
+                'composicion_normalizada' => $request->composicion_normalizada,
+                'archivo_pdf' => $request->archivo_pdf,
+                'archivo_xml' => $request->archivo_xml,
+                'archivo_json' => $request->archivo_json,
+                'archivos_adicionales' => $request->archivos_adicionales,
+                'estado' => $request->estado,
                 'observaciones' => $request->observaciones,
-                'conclusiones' => $request->conclusiones,
-                'recomendaciones' => $request->recomendaciones,
-                'metodos_utilizados' => $request->metodos_utilizados,
-                'equipos_utilizados' => $request->equipos_utilizados,
-                'incertidumbre' => $request->incertidumbre,
-                'trazabilidad' => $request->trazabilidad,
-                'archivo_dictamen' => $rutaArchivo,
-                'archivos_anexos' => $anexos,
-                'estado' => 'EMITIDO',
-                'metadata' => $request->metadata
             ]);
 
             $this->logActivity(
                 auth()->id(),
                 'calidad',
-                'creacion_dictamen',
-                'dictamenes',
-                "Dictamen creado: {$dictamen->folio} - Resultado: {$dictamen->resultado}",
+                'CREACION_DICTAMEN',
+                'Calidad',
+                "Dictamen creado: {$dictamen->folio}",
                 'dictamenes',
                 $dictamen->id
             );
 
             DB::commit();
 
-            return $this->sendResponse($dictamen->load(['contribuyente', 'producto', 'laboratorio']), 
+            return $this->success($dictamen->load(['contribuyente', 'producto', 'instalacion']), 
                 'Dictamen creado exitosamente', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al crear dictamen', [$e->getMessage()], 500);
+            return $this->error('Error al crear dictamen: ' . $e->getMessage(), 500);
         }
     }
 
@@ -250,95 +217,53 @@ class DictamenController extends BaseController
             'contribuyente',
             'instalacion',
             'producto',
-            'laboratorio',
-            'tecnico',
             'registrosVolumetricos' => function($q) {
                 $q->latest()->limit(10);
             }
         ])->find($id);
 
         if (!$dictamen) {
-            return $this->sendError('Dictamen no encontrado');
+            return $this->error('Dictamen no encontrado', 404);
         }
 
-        return $this->sendResponse($dictamen, 'Dictamen obtenido exitosamente');
+        return $this->success($dictamen, 'Dictamen obtenido exitosamente');
     }
 
     /**
-     * Actualizar dictamen (solo si está en estado BORRADOR)
+     * Actualizar dictamen
      */
     public function update(Request $request, $id)
     {
         $dictamen = Dictamen::find($id);
 
         if (!$dictamen) {
-            return $this->sendError('Dictamen no encontrado');
-        }
-
-        if ($dictamen->estado != 'BORRADOR') {
-            return $this->sendError('Solo se pueden modificar dictámenes en estado borrador', [], 403);
+            return $this->error('Dictamen no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
-            'instalacion_id' => 'nullable|exists:instalaciones,id',
-            'observaciones' => 'nullable|string|max:1000',
-            'conclusiones' => 'nullable|string|max:1000',
-            'recomendaciones' => 'nullable|string|max:1000',
-            'archivo_dictamen' => 'nullable|file|mimes:pdf|max:20480',
-            'archivos_anexos' => 'nullable|array',
-            'archivos_anexos.*' => 'file|mimes:pdf,doc,docx,xls,xlsx,jpg,png|max:10240',
-            'metadata' => 'nullable|array'
+            'observaciones' => 'nullable|string',
+            'estado' => 'sometimes|in:VIGENTE,CADUCADO,CANCELADO',
+            'archivo_pdf' => 'nullable|string|max:255',
+            'archivo_xml' => 'nullable|string|max:255',
+            'archivo_json' => 'nullable|string|max:255',
+            'archivos_adicionales' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
             $datosAnteriores = $dictamen->toArray();
-
-            // Actualizar archivo si se proporciona
-            if ($request->hasFile('archivo_dictamen')) {
-                $rutaArchivo = $request->file('archivo_dictamen')
-                    ->store("dictamenes/{$dictamen->contribuyente_id}", 'public');
-                $dictamen->archivo_dictamen = $rutaArchivo;
-            }
-
-            // Actualizar anexos si se proporcionan
-            if ($request->hasFile('archivos_anexos')) {
-                $anexos = $dictamen->archivos_anexos ?? [];
-                foreach ($request->file('archivos_anexos') as $archivo) {
-                    $ruta = $archivo->store("dictamenes/{$dictamen->contribuyente_id}/anexos", 'public');
-                    $anexos[] = [
-                        'nombre_original' => $archivo->getClientOriginalName(),
-                        'ruta' => $ruta,
-                        'tipo' => $archivo->getMimeType(),
-                        'tamano' => $archivo->getSize(),
-                        'fecha' => now()->toDateTimeString()
-                    ];
-                }
-                $dictamen->archivos_anexos = $anexos;
-            }
-
-            $dictamen->instalacion_id = $request->instalacion_id ?? $dictamen->instalacion_id;
-            $dictamen->observaciones = $request->observaciones ?? $dictamen->observaciones;
-            $dictamen->conclusiones = $request->conclusiones ?? $dictamen->conclusiones;
-            $dictamen->recomendaciones = $request->recomendaciones ?? $dictamen->recomendaciones;
-            
-            if ($request->has('metadata')) {
-                $metadata = array_merge($dictamen->metadata ?? [], $request->metadata);
-                $dictamen->metadata = $metadata;
-            }
-            
-            $dictamen->save();
+            $dictamen->update($request->all());
 
             $this->logActivity(
                 auth()->id(),
                 'calidad',
-                'actualizacion_dictamen',
-                'dictamenes',
+                'ACTUALIZACION_DICTAMEN',
+                'Calidad',
                 "Dictamen actualizado: {$dictamen->folio}",
                 'dictamenes',
                 $dictamen->id,
@@ -348,79 +273,11 @@ class DictamenController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($dictamen, 'Dictamen actualizado exitosamente');
+            return $this->success($dictamen, 'Dictamen actualizado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al actualizar dictamen', [$e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Publicar dictamen (cambiar de BORRADOR a EMITIDO)
-     */
-    public function publicar(Request $request, $id)
-    {
-        $dictamen = Dictamen::find($id);
-
-        if (!$dictamen) {
-            return $this->sendError('Dictamen no encontrado');
-        }
-
-        if ($dictamen->estado != 'BORRADOR') {
-            return $this->sendError('El dictamen no está en estado borrador', [], 403);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'fecha_emision' => 'required|date',
-            'fecha_vencimiento' => 'required|date|after:fecha_emision',
-            'resultado' => 'required|in:CONFORME,NO_CONFORME,CON_OBSERVACIONES',
-            'observaciones_publicacion' => 'nullable|string|max:500'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            $datosAnteriores = $dictamen->toArray();
-
-            $dictamen->estado = 'EMITIDO';
-            $dictamen->fecha_emision = $request->fecha_emision;
-            $dictamen->fecha_vencimiento = $request->fecha_vencimiento;
-            $dictamen->resultado = $request->resultado;
-            
-            $metadata = $dictamen->metadata ?? [];
-            $metadata['publicacion'] = [
-                'fecha' => now()->toDateTimeString(),
-                'usuario_id' => auth()->id(),
-                'observaciones' => $request->observaciones_publicacion
-            ];
-            $dictamen->metadata = $metadata;
-            
-            $dictamen->save();
-
-            $this->logActivity(
-                auth()->id(),
-                'calidad',
-                'publicacion_dictamen',
-                'dictamenes',
-                "Dictamen publicado: {$dictamen->folio} - Resultado: {$dictamen->resultado}",
-                'dictamenes',
-                $dictamen->id,
-                $datosAnteriores,
-                $dictamen->toArray()
-            );
-
-            DB::commit();
-
-            return $this->sendResponse($dictamen, 'Dictamen publicado exitosamente');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return $this->sendError('Error al publicar dictamen', [$e->getMessage()], 500);
+            return $this->error('Error al actualizar dictamen: ' . $e->getMessage(), 500);
         }
     }
 
@@ -432,20 +289,19 @@ class DictamenController extends BaseController
         $dictamen = Dictamen::find($id);
 
         if (!$dictamen) {
-            return $this->sendError('Dictamen no encontrado');
+            return $this->error('Dictamen no encontrado', 404);
         }
 
         if ($dictamen->estado == 'CANCELADO') {
-            return $this->sendError('El dictamen ya está cancelado', [], 403);
+            return $this->error('El dictamen ya está cancelado', 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'motivo_cancelacion' => 'required|string|max:500',
-            'observaciones' => 'nullable|string|max:500'
+            'motivo_cancelacion' => 'required|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
@@ -454,24 +310,15 @@ class DictamenController extends BaseController
             $datosAnteriores = $dictamen->toArray();
 
             $dictamen->estado = 'CANCELADO';
-            
-            $metadata = $dictamen->metadata ?? [];
-            $metadata['cancelacion'] = [
-                'fecha' => now()->toDateTimeString(),
-                'usuario_id' => auth()->id(),
-                'motivo' => $request->motivo_cancelacion,
-                'observaciones' => $request->observaciones
-            ];
-            $dictamen->metadata = $metadata;
-            
+            $dictamen->observaciones = $request->motivo_cancelacion;
             $dictamen->save();
 
             $this->logActivity(
                 auth()->id(),
                 'calidad',
-                'cancelacion_dictamen',
-                'dictamenes',
-                "Dictamen cancelado: {$dictamen->folio} - Motivo: {$request->motivo_cancelacion}",
+                'CANCELACION_DICTAMEN',
+                'Calidad',
+                "Dictamen cancelado: {$dictamen->folio}",
                 'dictamenes',
                 $dictamen->id,
                 $datosAnteriores,
@@ -480,257 +327,122 @@ class DictamenController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($dictamen, 'Dictamen cancelado exitosamente');
+            return $this->success($dictamen, 'Dictamen cancelado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al cancelar dictamen', [$e->getMessage()], 500);
+            return $this->error('Error al cancelar dictamen: ' . $e->getMessage(), 500);
         }
     }
 
     /**
-     * Descargar archivo del dictamen
+     * Verificar vigencia
      */
-    public function descargar($id)
+    public function verificarVigencia($id)
     {
         $dictamen = Dictamen::find($id);
 
         if (!$dictamen) {
-            return $this->sendError('Dictamen no encontrado');
+            return $this->error('Dictamen no encontrado', 404);
         }
 
-        if (!$dictamen->archivo_dictamen || !Storage::disk('public')->exists($dictamen->archivo_dictamen)) {
-            return $this->sendError('Archivo no encontrado', [], 404);
-        }
+        $hoy = Carbon::now();
+        $vigente = $dictamen->estado == 'VIGENTE';
+        $fechaVencimiento = $dictamen->fecha_emision->copy()->addYear();
 
-        $nombreArchivo = "dictamen_{$dictamen->folio}.pdf";
+        $diasVigencia = $vigente ? $hoy->diffInDays($fechaVencimiento, false) : 0;
 
-        return Storage::disk('public')->download($dictamen->archivo_dictamen, $nombreArchivo);
-    }
-
-    /**
-     * Descargar anexo
-     */
-    public function descargarAnexo(Request $request, $id)
-    {
-        $dictamen = Dictamen::find($id);
-
-        if (!$dictamen) {
-            return $this->sendError('Dictamen no encontrado');
-        }
-
-        $validator = Validator::make($request->all(), [
-            'anexo_index' => 'required|integer|min:0'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        $anexos = $dictamen->archivos_anexos ?? [];
-        
-        if (!isset($anexos[$request->anexo_index])) {
-            return $this->sendError('Anexo no encontrado', [], 404);
-        }
-
-        $anexo = $anexos[$request->anexo_index];
-        
-        if (!Storage::disk('public')->exists($anexo['ruta'])) {
-            return $this->sendError('Archivo no encontrado', [], 404);
-        }
-
-        return Storage::disk('public')->download($anexo['ruta'], $anexo['nombre_original']);
-    }
-
-    /**
-     * Validar dictamen contra especificaciones
-     */
-    public function validarEspecificaciones($id)
-    {
-        $dictamen = Dictamen::with('producto')->find($id);
-
-        if (!$dictamen) {
-            return $this->sendError('Dictamen no encontrado');
-        }
-
-        $producto = $dictamen->producto;
-        $resultados = $dictamen->resultados;
-        $validaciones = [];
-        $conforme = true;
-        $observaciones = [];
-
-        // Validar contra especificaciones del producto
-        if ($producto->especificaciones_calidad) {
-            foreach ($producto->especificaciones_calidad as $espec) {
-                $parametro = $espec['parametro'];
-                $valorObtenido = null;
-
-                // Buscar el valor en los resultados
-                switch ($parametro) {
-                    case 'densidad':
-                        $valorObtenido = $resultados['densidad'] ?? null;
-                        break;
-                    case 'api_gravedad':
-                        $valorObtenido = $resultados['api_gravedad'] ?? null;
-                        break;
-                    case 'viscosidad':
-                        $valorObtenido = $resultados['viscosidad'] ?? null;
-                        break;
-                    case 'azufre':
-                        $valorObtenido = $resultados['azufre'] ?? null;
-                        break;
-                    case 'octanaje_ron':
-                        $valorObtenido = $resultados['octanaje_ron'] ?? null;
-                        break;
-                    case 'octanaje_mon':
-                        $valorObtenido = $resultados['octanaje_mon'] ?? null;
-                        break;
-                }
-
-                if ($valorObtenido !== null) {
-                    $cumple = true;
-                    $mensajes = [];
-
-                    if (isset($espec['valor_min']) && $valorObtenido < $espec['valor_min']) {
-                        $cumple = false;
-                        $mensajes[] = "Valor ({$valorObtenido}) por debajo del mínimo ({$espec['valor_min']})";
-                    }
-
-                    if (isset($espec['valor_max']) && $valorObtenido > $espec['valor_max']) {
-                        $cumple = false;
-                        $mensajes[] = "Valor ({$valorObtenido}) por encima del máximo ({$espec['valor_max']})";
-                    }
-
-                    $validaciones[] = [
-                        'parametro' => $parametro,
-                        'especificacion' => $espec,
-                        'valor_obtenido' => $valorObtenido,
-                        'cumple' => $cumple,
-                        'mensajes' => $mensajes
-                    ];
-
-                    if (!$cumple) {
-                        $conforme = false;
-                        $observaciones = array_merge($observaciones, $mensajes);
-                    }
-                }
-            }
-        }
-
-        // Validar composición
-        if (isset($resultados['composicion']) && $producto->composicion_tipica) {
-            foreach ($resultados['composicion'] as $comp) {
-                $tipico = collect($producto->composicion_tipica)
-                    ->firstWhere('componente', $comp['componente']);
-
-                if ($tipico) {
-                    $diferencia = abs($comp['porcentaje'] - $tipico['porcentaje']);
-                    $tolerancia = $tipico['porcentaje'] * 0.1; // 10% de tolerancia
-                    
-                    $cumple = $diferencia <= $tolerancia;
-                    
-                    $validaciones[] = [
-                        'parametro' => 'composicion_' . $comp['componente'],
-                        'componente' => $comp['componente'],
-                        'valor_obtenido' => $comp['porcentaje'],
-                        'valor_referencia' => $tipico['porcentaje'],
-                        'diferencia' => $diferencia,
-                        'tolerancia' => $tolerancia,
-                        'cumple' => $cumple
-                    ];
-
-                    if (!$cumple) {
-                        $conforme = false;
-                        $observaciones[] = "Composición de {$comp['componente']} fuera de tolerancia (±10%)";
-                    }
-                }
-            }
-        }
-
-        $resultadoValidacion = [
+        $resultado = [
             'dictamen_id' => $dictamen->id,
-            'dictamen_folio' => $dictamen->folio,
-            'producto' => [
-                'id' => $producto->id,
-                'nombre' => $producto->nombre,
-                'clave_sat' => $producto->clave_sat
-            ],
-            'validaciones' => $validaciones,
-            'conforme' => $conforme,
-            'observaciones' => $observaciones,
-            'fecha_validacion' => now()->toDateTimeString()
+            'folio' => $dictamen->folio,
+            'fecha_emision' => $dictamen->fecha_emision->toDateString(),
+            'fecha_vencimiento' => $fechaVencimiento->toDateString(),
+            'vigente' => $vigente,
+            'dias_transcurridos' => $vigente ? $hoy->diffInDays($dictamen->fecha_emision) : 0,
+            'dias_restantes' => $diasVigencia,
+            'porcentaje_vigencia' => $vigente && $diasVigencia > 0 ? round(($diasVigencia / 365) * 100, 2) : 0,
+            'estado' => $dictamen->estado,
+            'proximo_vencer' => $diasVigencia <= 30 && $diasVigencia > 0,
         ];
 
-        return $this->sendResponse($resultadoValidacion, 'Validación contra especificaciones completada');
+        return $this->success($resultado, 'Vigencia del dictamen verificada exitosamente');
     }
 
     /**
-     * Obtener estadísticas de dictámenes
+     * Obtener estadísticas
      */
     public function estadisticas(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'contribuyente_id' => 'required|exists:contribuyentes,id',
-            'fecha_inicio' => 'required|date',
-            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio'
+            'anio' => 'required|integer|min:2020',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         $dictamenes = Dictamen::where('contribuyente_id', $request->contribuyente_id)
-            ->whereBetween('fecha_emision', [
-                Carbon::parse($request->fecha_inicio),
-                Carbon::parse($request->fecha_fin)
-            ])
+            ->whereYear('fecha_emision', $request->anio)
+            ->with('producto')
             ->get();
 
         $estadisticas = [
-            'periodo' => [
-                'inicio' => $request->fecha_inicio,
-                'fin' => $request->fecha_fin
-            ],
             'contribuyente_id' => $request->contribuyente_id,
-            'total_dictamenes' => $dictamenes->count(),
-            'por_resultado' => $dictamenes->groupBy('resultado')
-                ->map(function ($items) {
-                    return [
-                        'cantidad' => $items->count(),
-                        'porcentaje' => round(($items->count() / max($dictamenes->count(), 1)) * 100, 2)
-                    ];
-                }),
-            'por_tipo' => $dictamenes->groupBy('tipo_dictamen')
-                ->map(function ($items) {
-                    return $items->count();
-                }),
+            'anio' => $request->anio,
+            'resumen' => [
+                'total_dictamenes' => $dictamenes->count(),
+                'vigentes' => $dictamenes->where('estado', 'VIGENTE')->count(),
+                'caducados' => $dictamenes->where('estado', 'CADUCADO')->count(),
+                'cancelados' => $dictamenes->where('estado', 'CANCELADO')->count(),
+            ],
             'por_producto' => $dictamenes->groupBy('producto_id')
                 ->map(function ($items) {
                     $producto = $items->first()->producto;
                     return [
                         'producto' => $producto ? $producto->nombre : 'N/A',
                         'cantidad' => $items->count(),
-                        'conformes' => $items->where('resultado', 'CONFORME')->count()
+                        'vigentes' => $items->where('estado', 'VIGENTE')->count(),
                     ];
                 })->values(),
-            'cumplimiento' => [
-                'conformes' => $dictamenes->where('resultado', 'CONFORME')->count(),
-                'no_conformes' => $dictamenes->where('resultado', 'NO_CONFORME')->count(),
-                'con_observaciones' => $dictamenes->where('resultado', 'CON_OBSERVACIONES')->count(),
-                'tasa_conformidad' => round(($dictamenes->where('resultado', 'CONFORME')->count() / max($dictamenes->count(), 1)) * 100, 2)
-            ],
             'tendencia_mensual' => $dictamenes->groupBy(function ($item) {
-                    return Carbon::parse($item->fecha_emision)->format('Y-m');
+                    return $item->fecha_emision->format('Y-m');
                 })
                 ->map(function ($items, $mes) {
                     return [
                         'mes' => $mes,
                         'total' => $items->count(),
-                        'conformes' => $items->where('resultado', 'CONFORME')->count()
                     ];
-                })->values()
+                })->values(),
         ];
 
-        return $this->sendResponse($estadisticas, 'Estadísticas de dictámenes obtenidas exitosamente');
+        return $this->success($estadisticas, 'Estadísticas de dictámenes obtenidas exitosamente');
+    }
+
+    /**
+     * Obtener por producto
+     */
+    public function porProducto($productoId)
+    {
+        $producto = Producto::find($productoId);
+
+        if (!$producto) {
+            return $this->error('Producto no encontrado', 404);
+        }
+
+        $dictamenes = Dictamen::where('producto_id', $productoId)
+            ->where('estado', 'VIGENTE')
+            ->with('contribuyente')
+            ->orderBy('fecha_emision', 'desc')
+            ->get();
+
+        return $this->success([
+            'producto' => [
+                'id' => $producto->id,
+                'nombre' => $producto->nombre,
+                'clave_sat' => $producto->clave_sat,
+            ],
+            'dictamenes' => $dictamenes,
+        ], 'Dictámenes por producto obtenidos exitosamente');
     }
 }

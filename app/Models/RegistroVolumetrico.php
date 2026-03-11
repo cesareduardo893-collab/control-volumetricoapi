@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class RegistroVolumetrico extends Model
 {
@@ -54,29 +55,57 @@ class RegistroVolumetrico extends Model
     ];
 
     protected $casts = [
-        'fecha'                     => 'date',
-        'hora_inicio'               => 'string',
-        'hora_fin'                  => 'string',
-        'volumen_inicial'           => 'decimal:4',
-        'volumen_final'             => 'decimal:4',
-        'volumen_operacion'         => 'decimal:4',
-        'temperatura_inicial'       => 'decimal:2',
-        'temperatura_final'         => 'decimal:2',
-        'presion_inicial'           => 'decimal:3',
-        'presion_final'             => 'decimal:3',
-        'densidad'                  => 'decimal:4',
-        'volumen_corregido'         => 'decimal:4',
-        'factor_correccion'         => 'decimal:6',
-        'detalle_correccion'        => 'array',
-        'masa'                      => 'decimal:4',
-        'poder_calorifico'          => 'decimal:4',
-        'energia_total'             => 'decimal:4',
-        'fecha_validacion'          => 'datetime',
-        'validaciones_realizadas'   => 'array',
-        'inconsistencias_detectadas'=> 'array',
-        'porcentaje_diferencia'     => 'decimal:4',
-        'errores'                   => 'string',
+        'fecha' => 'date',
+        'hora_inicio' => 'string',
+        'hora_fin' => 'string',
+        'volumen_inicial' => 'decimal:4',
+        'volumen_final' => 'decimal:4',
+        'volumen_operacion' => 'decimal:4',
+        'temperatura_inicial' => 'decimal:2',
+        'temperatura_final' => 'decimal:2',
+        'presion_inicial' => 'decimal:3',
+        'presion_final' => 'decimal:3',
+        'densidad' => 'decimal:4',
+        'volumen_corregido' => 'decimal:4',
+        'factor_correccion' => 'decimal:6',
+        'detalle_correccion' => 'array',
+        'masa' => 'decimal:4',
+        'poder_calorifico' => 'decimal:4',
+        'energia_total' => 'decimal:4',
+        'fecha_validacion' => 'datetime',
+        'validaciones_realizadas' => 'array',
+        'inconsistencias_detectadas' => 'array',
+        'porcentaje_diferencia' => 'decimal:4',
+        'errores' => 'array',
     ];
+
+    public const TIPO_REGISTRO_OPERACION = 'operacion';
+    public const TIPO_REGISTRO_ACUMULADO = 'acumulado';
+    public const TIPO_REGISTRO_EXISTENCIAS = 'existencias';
+
+    public const OPERACION_RECEPCION = 'recepcion';
+    public const OPERACION_ENTREGA = 'entrega';
+    public const OPERACION_INVENTARIO_INICIAL = 'inventario_inicial';
+    public const OPERACION_INVENTARIO_FINAL = 'inventario_final';
+    public const OPERACION_VENTA = 'venta';
+
+    public const ESTADO_PENDIENTE = 'PENDIENTE';
+    public const ESTADO_PROCESADO = 'PROCESADO';
+    public const ESTADO_VALIDADO = 'VALIDADO';
+    public const ESTADO_ERROR = 'ERROR';
+    public const ESTADO_CANCELADO = 'CANCELADO';
+    public const ESTADO_CON_ALARMA = 'CON_ALARMA';
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->numero_registro)) {
+                $model->numero_registro = 'RV-' . Str::uuid();
+            }
+        });
+    }
 
     public function instalacion()
     {

@@ -35,7 +35,6 @@ class Tanque extends Model
         'certificado_calibracion',
         'entidad_calibracion',
         'incertidumbre_medicion',
-        'historial_calibraciones',
         'temperatura_referencia',
         'presion_referencia',
         'tipo_medicion',
@@ -50,26 +49,33 @@ class Tanque extends Model
     ];
 
     protected $casts = [
-        'capacidad_total'               => 'decimal:4',
-        'capacidad_util'                 => 'decimal:4',
-        'capacidad_operativa'            => 'decimal:4',
-        'capacidad_minima'               => 'decimal:4',
-        'capacidad_gas_talon'            => 'decimal:4',
-        'fecha_fabricacion'              => 'date',
-        'fecha_instalacion'              => 'date',
-        'fecha_ultima_calibracion'       => 'date',
-        'fecha_proxima_calibracion'      => 'date',
-        'incertidumbre_medicion'         => 'decimal:3',
-        'historial_calibraciones'        => 'array',
-        'temperatura_referencia'         => 'decimal:2',
-        'presion_referencia'             => 'decimal:3',
-        'tabla_aforo'                    => 'array',
-        'curvas_calibracion'             => 'array',
-        'evidencias_alteracion'          => 'array',
-        'ultima_deteccion_alteracion'    => 'datetime',
-        'alerta_alteracion'              => 'boolean',
-        'activo'                         => 'boolean',
+        'capacidad_total' => 'decimal:4',
+        'capacidad_util' => 'decimal:4',
+        'capacidad_operativa' => 'decimal:4',
+        'capacidad_minima' => 'decimal:4',
+        'capacidad_gas_talon' => 'decimal:4',
+        'fecha_fabricacion' => 'date',
+        'fecha_instalacion' => 'date',
+        'fecha_ultima_calibracion' => 'date',
+        'fecha_proxima_calibracion' => 'date',
+        'incertidumbre_medicion' => 'decimal:3',
+        'temperatura_referencia' => 'decimal:2',
+        'presion_referencia' => 'decimal:3',
+        'tabla_aforo' => 'array',
+        'curvas_calibracion' => 'array',
+        'evidencias_alteracion' => 'array',
+        'ultima_deteccion_alteracion' => 'datetime',
+        'alerta_alteracion' => 'boolean',
+        'activo' => 'boolean',
     ];
+
+    public const TIPO_MEDICION_ESTATICA = 'estatica';
+    public const TIPO_MEDICION_DINAMICA = 'dinamica';
+
+    public const ESTADO_OPERATIVO = 'OPERATIVO';
+    public const ESTADO_MANTENIMIENTO = 'MANTENIMIENTO';
+    public const ESTADO_FUERA_SERVICIO = 'FUERA_SERVICIO';
+    public const ESTADO_CALIBRACION = 'CALIBRACION';
 
     public function instalacion()
     {
@@ -99,5 +105,10 @@ class Tanque extends Model
     public function tipoTanque()
     {
         return $this->belongsTo(CatalogoValor::class, 'tipo_tanque_id');
+    }
+
+    public function historialCalibraciones()
+    {
+        return $this->hasMany(HistorialCalibracion::class, 'tanque_id');
     }
 }

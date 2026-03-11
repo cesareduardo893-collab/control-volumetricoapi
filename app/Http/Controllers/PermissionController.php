@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Permission;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 class PermissionController extends BaseController
 {
@@ -22,26 +22,23 @@ class PermissionController extends BaseController
             $query->where('name', 'LIKE', "%{$request->name}%");
         }
 
-        if ($request->has('guard_name')) {
-            $query->where('guard_name', $request->guard_name);
+        if ($request->has('slug')) {
+            $query->where('slug', 'LIKE', "%{$request->slug}%");
         }
 
         if ($request->has('modulo')) {
-            $query->where('name', 'LIKE', "{$request->modulo}.%");
-        }
-
-        if ($request->has('sistema')) {
-            $query->where('sistema', $request->boolean('sistema'));
+            $query->where('modulo', $request->modulo);
         }
 
         if ($request->has('activo')) {
             $query->where('activo', $request->boolean('activo'));
         }
 
-        $permisos = $query->orderBy('name')
+        $permisos = $query->orderBy('modulo')
+            ->orderBy('name')
             ->paginate($request->get('per_page', 15));
 
-        return $this->sendResponse($permisos, 'Permisos obtenidos exitosamente');
+        return $this->success($permisos, 'Permisos obtenidos exitosamente');
     }
 
     /**
@@ -50,19 +47,16 @@ class PermissionController extends BaseController
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:permissions,name',
-            'guard_name' => 'required|in:web,api',
-            'display_name' => 'required|string|max:255',
+            'name' => 'required|string|max:255',
+            'slug' => 'required|string|max:255|unique:permissions,slug',
             'description' => 'nullable|string|max:500',
             'modulo' => 'required|string|max:100',
-            'accion' => 'required|string|max:100',
-            'sistema' => 'boolean',
+            'reglas' => 'nullable|array',
             'activo' => 'boolean',
-            'metadata' => 'nullable|array'
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
@@ -70,33 +64,30 @@ class PermissionController extends BaseController
 
             $permiso = Permission::create([
                 'name' => $request->name,
-                'guard_name' => $request->guard_name,
-                'display_name' => $request->display_name,
+                'slug' => $request->slug,
                 'description' => $request->description,
                 'modulo' => $request->modulo,
-                'accion' => $request->accion,
-                'sistema' => $request->boolean('sistema', false),
+                'reglas' => $request->reglas,
                 'activo' => $request->boolean('activo', true),
-                'metadata' => $request->metadata
             ]);
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
-                'creacion_permiso',
-                'permissions',
-                "Permiso creado: {$permiso->name}",
+                'administracion_sistema',
+                'CREACION_PERMISO',
+                'Administración',
+                "Permiso creado: {$permiso->slug}",
                 'permissions',
                 $permiso->id
             );
 
             DB::commit();
 
-            return $this->sendResponse($permiso, 'Permiso creado exitosamente', 201);
+            return $this->success($permiso, 'Permiso creado exitosamente', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al crear permiso', [$e->getMessage()], 500);
+            return $this->error('Error al crear permiso: ' . $e->getMessage(), 500);
         }
     }
 
@@ -106,21 +97,14 @@ class PermissionController extends BaseController
     public function show($id)
     {
         $permiso = Permission::with(['roles' => function($q) {
-            $q->select('id', 'name', 'display_name');
+            $q->wherePivot('activo', true);
         }])->find($id);
 
         if (!$permiso) {
-            return $this->sendError('Permiso no encontrado');
+            return $this->error('Permiso no encontrado', 404);
         }
 
-        // Estadísticas de uso
-        $permiso->estadisticas = [
-            'total_roles' => $permiso->roles->count(),
-            'roles_activos' => $permiso->roles()->where('activo', true)->count(),
-            'usuarios_con_permiso' => $this->contarUsuariosConPermiso($permiso)
-        ];
-
-        return $this->sendResponse($permiso, 'Permiso obtenido exitosamente');
+        return $this->success($permiso, 'Permiso obtenido exitosamente');
     }
 
     /**
@@ -131,52 +115,34 @@ class PermissionController extends BaseController
         $permiso = Permission::find($id);
 
         if (!$permiso) {
-            return $this->sendError('Permiso no encontrado');
-        }
-
-        // Validar que no sea un permiso de sistema
-        if ($permiso->sistema && !auth()->user()->hasPermission('modificar_permisos_sistema')) {
-            return $this->sendError('No tiene permisos para modificar permisos de sistema', [], 403);
+            return $this->error('Permiso no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
-            'name' => [
-                'sometimes',
-                'string',
-                'max:255',
-                Rule::unique('permissions')->ignore($permiso->id)
-            ],
-            'display_name' => 'sometimes|string|max:255',
+            'name' => 'sometimes|string|max:255',
+            'slug' => "sometimes|string|max:255|unique:permissions,slug,{$id}",
             'description' => 'nullable|string|max:500',
             'modulo' => 'sometimes|string|max:100',
-            'accion' => 'sometimes|string|max:100',
+            'reglas' => 'nullable|array',
             'activo' => 'sometimes|boolean',
-            'metadata' => 'nullable|array'
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
             $datosAnteriores = $permiso->toArray();
-
-            // No permitir cambiar el guard_name si ya está en uso
-            if ($request->has('guard_name') && $permiso->roles()->count() > 0) {
-                return $this->sendError('No se puede cambiar el guard_name de un permiso asignado a roles', [], 422);
-            }
-
-            $permiso->fill($request->all());
-            $permiso->save();
+            $permiso->update($request->all());
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
-                'actualizacion_permiso',
-                'permissions',
-                "Permiso actualizado: {$permiso->name}",
+                'administracion_sistema',
+                'ACTUALIZACION_PERMISO',
+                'Administración',
+                "Permiso actualizado: {$permiso->slug}",
                 'permissions',
                 $permiso->id,
                 $datosAnteriores,
@@ -185,11 +151,11 @@ class PermissionController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($permiso, 'Permiso actualizado exitosamente');
+            return $this->success($permiso, 'Permiso actualizado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al actualizar permiso', [$e->getMessage()], 500);
+            return $this->error('Error al actualizar permiso: ' . $e->getMessage(), 500);
         }
     }
 
@@ -201,18 +167,17 @@ class PermissionController extends BaseController
         $permiso = Permission::find($id);
 
         if (!$permiso) {
-            return $this->sendError('Permiso no encontrado');
+            return $this->error('Permiso no encontrado', 404);
         }
 
-        // Validar que no sea un permiso de sistema
-        if ($permiso->sistema) {
-            return $this->sendError('No se puede eliminar un permiso de sistema', [], 403);
-        }
+        // Verificar si está asignado a roles
+        $rolesAsignados = DB::table('role_permission')
+            ->where('permission_id', $id)
+            ->where('activo', true)
+            ->count();
 
-        // Verificar si tiene roles asignados
-        $rolesAsignados = $permiso->roles()->count();
         if ($rolesAsignados > 0) {
-            return $this->sendError("No se puede eliminar el permiso porque está asignado a {$rolesAsignados} roles", [], 409);
+            return $this->error("No se puede eliminar el permiso porque está asignado a {$rolesAsignados} roles", 409);
         }
 
         try {
@@ -224,21 +189,21 @@ class PermissionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
-                'eliminacion_permiso',
-                'permissions',
-                "Permiso eliminado: {$permiso->name}",
+                'administracion_sistema',
+                'ELIMINACION_PERMISO',
+                'Administración',
+                "Permiso eliminado: {$permiso->slug}",
                 'permissions',
                 $permiso->id
             );
 
             DB::commit();
 
-            return $this->sendResponse([], 'Permiso eliminado exitosamente');
+            return $this->success([], 'Permiso eliminado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al eliminar permiso', [$e->getMessage()], 500);
+            return $this->error('Error al eliminar permiso: ' . $e->getMessage(), 500);
         }
     }
 
@@ -252,51 +217,42 @@ class PermissionController extends BaseController
             ->orderBy('name')
             ->get();
 
-        $agrupados = [];
-
-        foreach ($permisos as $permiso) {
-            $modulo = $permiso->modulo;
-            
-            if (!isset($agrupados[$modulo])) {
-                $agrupados[$modulo] = [
-                    'modulo' => $modulo,
-                    'permisos' => []
-                ];
-            }
-            
-            $agrupados[$modulo]['permisos'][] = [
-                'id' => $permiso->id,
-                'name' => $permiso->name,
-                'display_name' => $permiso->display_name,
-                'accion' => $permiso->accion,
-                'description' => $permiso->description
+        $agrupados = $permisos->groupBy('modulo')->map(function ($items, $modulo) {
+            return [
+                'modulo' => $modulo,
+                'permisos' => $items->map(function ($p) {
+                    return [
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        'slug' => $p->slug,
+                        'description' => $p->description,
+                    ];
+                })
             ];
-        }
+        })->values();
 
-        return $this->sendResponse(array_values($agrupados), 'Permisos por módulo obtenidos exitosamente');
+        return $this->success($agrupados, 'Permisos por módulo obtenidos exitosamente');
     }
 
     /**
-     * Sincronizar permisos (para desarrollo/migraciones)
+     * Sincronizar permisos (para desarrollo)
      */
     public function sincronizar(Request $request)
     {
         if (!app()->environment('local', 'development')) {
-            return $this->sendError('Esta operación solo está disponible en entornos de desarrollo', [], 403);
+            return $this->error('Operación no permitida en este entorno', 403);
         }
 
         $validator = Validator::make($request->all(), [
             'permisos' => 'required|array',
             'permisos.*.name' => 'required|string',
-            'permisos.*.display_name' => 'required|string',
+            'permisos.*.slug' => 'required|string',
             'permisos.*.modulo' => 'required|string',
-            'permisos.*.accion' => 'required|string',
-            'permisos.*.guard_name' => 'sometimes|in:web,api',
-            'permisos.*.description' => 'nullable|string'
+            'permisos.*.description' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
@@ -305,47 +261,34 @@ class PermissionController extends BaseController
             $resultados = [
                 'creados' => [],
                 'actualizados' => [],
-                'sin_cambios' => [],
                 'errores' => []
             ];
 
             foreach ($request->permisos as $datos) {
                 try {
-                    $permiso = Permission::where('name', $datos['name'])->first();
+                    $permiso = Permission::where('slug', $datos['slug'])->first();
 
                     if ($permiso) {
-                        // Actualizar existente
-                        $cambios = false;
-                        foreach (['display_name', 'description', 'modulo', 'accion'] as $campo) {
-                            if (isset($datos[$campo]) && $permiso->$campo != $datos[$campo]) {
-                                $permiso->$campo = $datos[$campo];
-                                $cambios = true;
-                            }
-                        }
-
-                        if ($cambios) {
-                            $permiso->save();
-                            $resultados['actualizados'][] = $permiso->name;
-                        } else {
-                            $resultados['sin_cambios'][] = $permiso->name;
-                        }
-                    } else {
-                        // Crear nuevo
-                        $permiso = Permission::create([
+                        $permiso->update([
                             'name' => $datos['name'],
-                            'guard_name' => $datos['guard_name'] ?? 'web',
-                            'display_name' => $datos['display_name'],
-                            'description' => $datos['description'] ?? null,
+                            'description' => $datos['description'] ?? $permiso->description,
                             'modulo' => $datos['modulo'],
-                            'accion' => $datos['accion'],
-                            'sistema' => true,
                             'activo' => true
                         ]);
-                        $resultados['creados'][] = $permiso->name;
+                        $resultados['actualizados'][] = $datos['slug'];
+                    } else {
+                        Permission::create([
+                            'name' => $datos['name'],
+                            'slug' => $datos['slug'],
+                            'description' => $datos['description'] ?? null,
+                            'modulo' => $datos['modulo'],
+                            'activo' => true
+                        ]);
+                        $resultados['creados'][] = $datos['slug'];
                     }
                 } catch (\Exception $e) {
                     $resultados['errores'][] = [
-                        'permiso' => $datos['name'],
+                        'permiso' => $datos['slug'],
                         'error' => $e->getMessage()
                     ];
                 }
@@ -353,20 +296,20 @@ class PermissionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
-                'sincronizacion_permisos',
-                'permissions',
-                "Sincronización de permisos completada. Creados: " . count($resultados['creados']) . ", Actualizados: " . count($resultados['actualizados']),
+                'administracion_sistema',
+                'SINCRONIZACION_PERMISOS',
+                'Administración',
+                "Sincronización completada. Creados: " . count($resultados['creados']) . ", Actualizados: " . count($resultados['actualizados']),
                 'permissions'
             );
 
             DB::commit();
 
-            return $this->sendResponse($resultados, 'Sincronización de permisos completada');
+            return $this->success($resultados, 'Sincronización completada');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error en sincronización de permisos', [$e->getMessage()], 500);
+            return $this->error('Error en sincronización: ' . $e->getMessage(), 500);
         }
     }
 
@@ -376,72 +319,69 @@ class PermissionController extends BaseController
     public function verificar(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'permission_name' => 'required|string',
-            'user_id' => 'nullable|exists:users,id'
+            'user_id' => 'required|exists:users,id',
+            'permiso_slug' => 'required|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
-        $userId = $request->user_id ?? auth()->id();
-        $user = User::find($userId);
+        $user = User::find($request->user_id);
+        
+        // Obtener roles activos del usuario
+        $roles = DB::table('user_role')
+            ->where('user_id', $user->id)
+            ->whereNull('fecha_revocacion')
+            ->pluck('role_id');
 
-        if (!$user) {
-            return $this->sendError('Usuario no encontrado');
+        // Obtener ID del permiso
+        $permisoId = DB::table('permissions')
+            ->where('slug', $request->permiso_slug)
+            ->where('activo', true)
+            ->value('id');
+
+        if (!$permisoId) {
+            return $this->success([
+                'user_id' => $user->id,
+                'user_email' => $user->email,
+                'permiso' => $request->permiso_slug,
+                'tiene_permiso' => false,
+                'via_roles' => []
+            ], 'Verificación completada');
         }
 
-        $tienePermiso = $user->hasPermission($request->permission_name);
+        // Verificar si algún rol tiene el permiso
+        $tienePermiso = DB::table('role_permission')
+            ->whereIn('role_id', $roles)
+            ->where('permission_id', $permisoId)
+            ->where('activo', true)
+            ->exists();
 
-        return $this->sendResponse([
-            'user_id' => $userId,
-            'user_name' => $user->name,
-            'permission' => $request->permission_name,
+        $permiso = Permission::where('slug', $request->permiso_slug)->first();
+
+        return $this->success([
+            'user_id' => $user->id,
+            'user_email' => $user->email,
+            'permiso' => $permiso ? $permiso->name : $request->permiso_slug,
             'tiene_permiso' => $tienePermiso,
-            'via' => $tienePermiso ? $this->obtenerViaPermiso($user, $request->permission_name) : null
-        ], 'Verificación de permiso completada');
+            'via_roles' => $tienePermiso ? $this->obtenerRolesConPermiso($user->id, $permisoId) : []
+        ], 'Verificación completada');
     }
 
     /**
-     * Métodos privados
+     * Obtener roles con permiso
      */
-    private function contarUsuariosConPermiso($permiso)
+    private function obtenerRolesConPermiso($userId, $permissionId)
     {
-        // Contar usuarios que tienen este permiso directamente
-        $directos = DB::table('user_has_permissions')
-            ->where('permission_id', $permiso->id)
-            ->count();
-
-        // Contar usuarios que tienen este permiso a través de roles
-        $roles = $permiso->roles()->pluck('id');
-        $porRoles = 0;
-        
-        if ($roles->isNotEmpty()) {
-            $porRoles = DB::table('user_has_roles')
-                ->whereIn('role_id', $roles)
-                ->distinct('user_id')
-                ->count('user_id');
-        }
-
-        return [
-            'directos' => $directos,
-            'por_roles' => $porRoles,
-            'total' => $directos + $porRoles
-        ];
-    }
-
-    private function obtenerViaPermiso($user, $permissionName)
-    {
-        if ($user->hasDirectPermission($permissionName)) {
-            return 'DIRECTO';
-        }
-
-        foreach ($user->roles as $rol) {
-            if ($rol->hasPermissionTo($permissionName)) {
-                return "ROL: {$rol->name}";
-            }
-        }
-
-        return null;
+        return DB::table('user_role')
+            ->join('roles', 'user_role.role_id', '=', 'roles.id')
+            ->join('role_permission', 'roles.id', '=', 'role_permission.role_id')
+            ->where('user_role.user_id', $userId)
+            ->where('user_role.fecha_revocacion', null)
+            ->where('role_permission.permission_id', $permissionId)
+            ->where('role_permission.activo', true)
+            ->pluck('roles.nombre')
+            ->toArray();
     }
 }

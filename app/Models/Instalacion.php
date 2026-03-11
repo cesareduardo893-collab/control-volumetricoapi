@@ -35,14 +35,18 @@ class Instalacion extends Model
     ];
 
     protected $casts = [
-        'latitud'                  => 'decimal:8',
-        'longitud'                 => 'decimal:8',
-        'fecha_operacion'          => 'date',
-        'configuracion_monitoreo'  => 'array',
-        'parametros_volumetricos'  => 'array',
-        'umbrales_alarma'          => 'array',
-        'activo'                   => 'boolean',
+        'latitud' => 'decimal:8',
+        'longitud' => 'decimal:8',
+        'fecha_operacion' => 'date',
+        'configuracion_monitoreo' => 'array',
+        'parametros_volumetricos' => 'array',
+        'umbrales_alarma' => 'array',
+        'activo' => 'boolean',
     ];
+
+    public const ESTATUS_OPERACION = 'OPERACION';
+    public const ESTATUS_SUSPENDIDA = 'SUSPENDIDA';
+    public const ESTATUS_CANCELADA = 'CANCELADA';
 
     public function contribuyente()
     {
@@ -72,5 +76,10 @@ class Instalacion extends Model
     public function reportesSat()
     {
         return $this->hasMany(ReporteSat::class);
+    }
+    
+    public function alarmas()
+    {
+        return $this->morphMany(Alarma::class, 'componente');
     }
 }

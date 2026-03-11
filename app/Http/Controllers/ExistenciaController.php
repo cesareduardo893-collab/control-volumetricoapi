@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Existencia;
 use App\Models\Tanque;
 use App\Models\Producto;
-use App\Models\Instalacion;
+use App\Models\Alarma;
+use App\Models\MovimientoDia;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -23,21 +25,19 @@ class ExistenciaController extends BaseController
             'producto',
             'usuarioRegistro',
             'usuarioValida'
-        ]);
+        ])->whereNull('deleted_at');
 
         // Filtros
-        if ($request->has('instalacion_id')) {
-            $query->whereHas('tanque', function($q) use ($request) {
-                $q->where('instalacion_id', $request->instalacion_id);
-            });
-        }
-
         if ($request->has('tanque_id')) {
             $query->where('tanque_id', $request->tanque_id);
         }
 
         if ($request->has('producto_id')) {
             $query->where('producto_id', $request->producto_id);
+        }
+
+        if ($request->has('fecha')) {
+            $query->whereDate('fecha', $request->fecha);
         }
 
         if ($request->has('fecha_inicio')) {
@@ -48,142 +48,164 @@ class ExistenciaController extends BaseController
             $query->where('fecha', '<=', Carbon::parse($request->fecha_fin));
         }
 
+        if ($request->has('tipo_registro')) {
+            $query->where('tipo_registro', $request->tipo_registro);
+        }
+
+        if ($request->has('tipo_movimiento')) {
+            $query->where('tipo_movimiento', $request->tipo_movimiento);
+        }
+
         if ($request->has('estado')) {
             $query->where('estado', $request->estado);
         }
 
-        if ($request->boolean('con_diferencias')) {
-            $query->whereRaw('ABS(diferencia_volumen) > tolerancia_maxima');
-        }
-
-        if ($request->has('volumen_min')) {
-            $query->where('volumen_final', '>=', $request->volumen_min);
-        }
-
-        if ($request->has('volumen_max')) {
-            $query->where('volumen_final', '<=', $request->volumen_max);
+        if ($request->has('numero_registro')) {
+            $query->where('numero_registro', 'LIKE', "%{$request->numero_registro}%");
         }
 
         $existencias = $query->orderBy('fecha', 'desc')
-            ->orderBy('tanque_id')
+            ->orderBy('hora', 'desc')
             ->paginate($request->get('per_page', 15));
 
-        return $this->sendResponse($existencias, 'Existencias obtenidas exitosamente');
+        return $this->success($existencias, 'Existencias obtenidas exitosamente');
     }
 
     /**
-     * Crear existencia (cierre diario)
+     * Crear existencia
      */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
+            'numero_registro' => 'required|string|max:255|unique:existencias,numero_registro',
             'tanque_id' => 'required|exists:tanques,id',
             'producto_id' => 'required|exists:productos,id',
-            'fecha' => 'required|date|before_or_equal:today',
-            'volumen_inicial' => 'required|numeric|min:0',
-            'volumen_final' => 'required|numeric|min:0',
-            'volumen_recibido' => 'nullable|numeric|min:0',
-            'volumen_entregado' => 'nullable|numeric|min:0',
-            'volumen_medido' => 'nullable|numeric|min:0',
-            'temperatura_promedio' => 'nullable|numeric',
-            'densidad_promedio' => 'nullable|numeric|min:0',
-            'nivel_tanque' => 'nullable|numeric|min:0',
-            'observaciones' => 'nullable|string|max:500',
-            'metadata' => 'nullable|array'
+            'fecha' => 'required|date',
+            'hora' => 'required|date_format:H:i:s',
+            'volumen_medido' => 'required|numeric|min:0',
+            'temperatura' => 'required|numeric',
+            'presion' => 'nullable|numeric|min:0',
+            'densidad' => 'nullable|numeric|min:0',
+            'volumen_corregido' => 'required|numeric|min:0',
+            'factor_correccion_temperatura' => 'required|numeric|min:0',
+            'factor_correccion_presion' => 'required|numeric|min:0',
+            'volumen_disponible' => 'required|numeric|min:0',
+            'volumen_agua' => 'required|numeric|min:0',
+            'volumen_sedimentos' => 'required|numeric|min:0',
+            'volumen_inicial_dia' => 'nullable|numeric|min:0',
+            'volumen_calculado' => 'nullable|numeric|min:0',
+            'diferencia_volumen' => 'nullable|numeric',
+            'porcentaje_diferencia' => 'nullable|numeric|min:0|max:100',
+            'detalle_calculo' => 'nullable|array',
+            'tipo_registro' => 'required|in:inicial,operacion,final',
+            'tipo_movimiento' => 'required|in:INICIAL,RECEPCION,ENTREGA,VENTA,TRASPASO,AJUSTE,INVENTARIO',
+            'documento_referencia' => 'nullable|string|max:255',
+            'rfc_contraparte' => 'nullable|string|size:13',
+            'observaciones' => 'nullable|string',
+            'usuario_registro_id' => 'required|exists:users,id',
+            'usuario_valida_id' => 'nullable|exists:users,id',
+            'fecha_validacion' => 'nullable|date',
+            'estado' => 'required|in:PENDIENTE,VALIDADO,EN_REVISION,CON_ALARMA',
+            'movimientos_dia' => 'nullable|array',
+            'movimientos_dia.*.tipo_movimiento' => 'required|in:INICIAL,RECEPCION,ENTREGA,VENTA,TRASPASO,AJUSTE,INVENTARIO',
+            'movimientos_dia.*.volumen' => 'required|numeric|min:0',
+            'movimientos_dia.*.temperatura' => 'nullable|numeric',
+            'movimientos_dia.*.presion' => 'nullable|numeric|min:0',
+            'movimientos_dia.*.densidad' => 'nullable|numeric|min:0',
+            'movimientos_dia.*.volumen_corregido' => 'required|numeric|min:0',
+            'movimientos_dia.*.documento_referencia' => 'nullable|string|max:255',
+            'movimientos_dia.*.rfc_contraparte' => 'nullable|string|size:13',
+            'movimientos_dia.*.observaciones' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            // Verificar si ya existe registro para esta fecha y tanque
-            $existente = Existencia::where('tanque_id', $request->tanque_id)
-                ->where('fecha', $request->fecha)
-                ->first();
-
-            if ($existente) {
-                return $this->sendError('Ya existe un registro de existencia para esta fecha y tanque', [
-                    'existencia_id' => $existente->id
-                ], 409);
-            }
-
+            // Validar tanque activo
             $tanque = Tanque::find($request->tanque_id);
-
-            // Validar que el volumen final no exceda la capacidad
-            if ($request->volumen_final > $tanque->capacidad_operativa) {
-                return $this->sendError('El volumen final excede la capacidad operativa del tanque', [], 422);
+            if (!$tanque || !$tanque->activo) {
+                return $this->error('El tanque no está activo', 422);
             }
 
-            // Calcular diferencias
-            $volumenRecibido = $request->volumen_recibido ?? 0;
-            $volumenEntregado = $request->volumen_entregado ?? 0;
-            
-            $volumenEsperado = $request->volumen_inicial + $volumenRecibido - $volumenEntregado;
-            $diferenciaVolumen = $request->volumen_final - $volumenEsperado;
-            
-            // Calcular tolerancia (0.5% por defecto)
-            $tolerancia = $tanque->tolerancia_diaria ?? 0.5;
-            $porcentajeDiferencia = $volumenEsperado > 0 
-                ? abs(($diferenciaVolumen / $volumenEsperado) * 100) 
-                : 0;
-
-            $estado = 'PENDIENTE';
-            if (abs($porcentajeDiferencia) <= $tolerancia) {
-                $estado = 'CONFORME';
-            } elseif (abs($porcentajeDiferencia) > $tolerancia * 2) {
-                $estado = 'CRITICO';
-            } else {
-                $estado = 'OBSERVADO';
+            // Validar producto activo
+            $producto = Producto::find($request->producto_id);
+            if (!$producto || !$producto->activo) {
+                return $this->error('El producto no está activo', 422);
             }
 
             $existencia = Existencia::create([
+                'numero_registro' => $request->numero_registro,
                 'tanque_id' => $request->tanque_id,
                 'producto_id' => $request->producto_id,
                 'fecha' => $request->fecha,
-                'volumen_inicial' => $request->volumen_inicial,
-                'volumen_final' => $request->volumen_final,
-                'volumen_recibido' => $volumenRecibido,
-                'volumen_entregado' => $volumenEntregado,
-                'volumen_esperado' => $volumenEsperado,
-                'diferencia_volumen' => $diferenciaVolumen,
-                'porcentaje_diferencia' => $porcentajeDiferencia,
-                'tolerancia_maxima' => $tolerancia,
+                'hora' => $request->hora,
                 'volumen_medido' => $request->volumen_medido,
-                'temperatura_promedio' => $request->temperatura_promedio,
-                'densidad_promedio' => $request->densidad_promedio,
-                'nivel_tanque' => $request->nivel_tanque,
-                'estado' => $estado,
+                'temperatura' => $request->temperatura,
+                'presion' => $request->presion,
+                'densidad' => $request->densidad,
+                'volumen_corregido' => $request->volumen_corregido,
+                'factor_correccion_temperatura' => $request->factor_correccion_temperatura,
+                'factor_correccion_presion' => $request->factor_correccion_presion,
+                'volumen_disponible' => $request->volumen_disponible,
+                'volumen_agua' => $request->volumen_agua,
+                'volumen_sedimentos' => $request->volumen_sedimentos,
+                'volumen_inicial_dia' => $request->volumen_inicial_dia,
+                'volumen_calculado' => $request->volumen_calculado,
+                'diferencia_volumen' => $request->diferencia_volumen,
+                'porcentaje_diferencia' => $request->porcentaje_diferencia,
+                'detalle_calculo' => $request->detalle_calculo,
+                'tipo_registro' => $request->tipo_registro,
+                'tipo_movimiento' => $request->tipo_movimiento,
+                'documento_referencia' => $request->documento_referencia,
+                'rfc_contraparte' => $request->rfc_contraparte,
                 'observaciones' => $request->observaciones,
-                'usuario_registro_id' => auth()->id(),
-                'metadata' => $request->metadata
+                'usuario_registro_id' => $request->usuario_registro_id,
+                'usuario_valida_id' => $request->usuario_valida_id,
+                'fecha_validacion' => $request->fecha_validacion,
+                'estado' => $request->estado,
             ]);
 
-            // Generar alarma si la diferencia es significativa
-            if ($estado == 'CRITICO') {
-                $this->generarAlarmaPorDiferencia($existencia);
+            // Registrar movimientos del día si existen
+            if ($request->has('movimientos_dia') && is_array($request->movimientos_dia)) {
+                foreach ($request->movimientos_dia as $movimiento) {
+                    MovimientoDia::create([
+                        'existencia_id' => $existencia->id,
+                        'tipo_movimiento' => $movimiento['tipo_movimiento'],
+                        'volumen' => $movimiento['volumen'],
+                        'temperatura' => $movimiento['temperatura'] ?? null,
+                        'presion' => $movimiento['presion'] ?? null,
+                        'densidad' => $movimiento['densidad'] ?? null,
+                        'volumen_corregido' => $movimiento['volumen_corregido'],
+                        'documento_referencia' => $movimiento['documento_referencia'] ?? null,
+                        'rfc_contraparte' => $movimiento['rfc_contraparte'] ?? null,
+                        'observaciones' => $movimiento['observaciones'] ?? null,
+                        'usuario_id' => auth()->id(),
+                    ]);
+                }
             }
 
             $this->logActivity(
                 auth()->id(),
-                'inventarios',
-                'registro_existencia',
-                'existencias',
-                "Existencia registrada para tanque {$tanque->codigo} fecha {$request->fecha} - Diferencia: {$porcentajeDiferencia}%",
+                'operaciones_cotidianas',
+                'CREACION_EXISTENCIA',
+                'Inventarios',
+                "Existencia creada: {$existencia->numero_registro}",
                 'existencias',
                 $existencia->id
             );
 
             DB::commit();
 
-            return $this->sendResponse($existencia->load(['tanque', 'producto']), 
-                'Existencia registrada exitosamente', 201);
+            return $this->success($existencia->load(['tanque', 'producto', 'usuarioRegistro', 'movimientosDia']), 
+                'Existencia creada exitosamente', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al registrar existencia', [$e->getMessage()], 500);
+            return $this->error('Error al crear existencia: ' . $e->getMessage(), 500);
         }
     }
 
@@ -197,14 +219,14 @@ class ExistenciaController extends BaseController
             'producto',
             'usuarioRegistro',
             'usuarioValida',
-            'alarmas'
+            'movimientosDia'
         ])->find($id);
 
         if (!$existencia) {
-            return $this->sendError('Existencia no encontrada');
+            return $this->error('Existencia no encontrada', 404);
         }
 
-        return $this->sendResponse($existencia, 'Existencia obtenida exitosamente');
+        return $this->success($existencia, 'Existencia obtenida exitosamente');
     }
 
     /**
@@ -215,21 +237,20 @@ class ExistenciaController extends BaseController
         $existencia = Existencia::find($id);
 
         if (!$existencia) {
-            return $this->sendError('Existencia no encontrada');
+            return $this->error('Existencia no encontrada', 404);
         }
 
         if ($existencia->estado == 'VALIDADO') {
-            return $this->sendError('La existencia ya está validada', [], 403);
+            return $this->error('La existencia ya está validada', 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'observaciones_validacion' => 'nullable|string|max:500',
-            'acciones_correctivas' => 'nullable|string|max:1000',
-            'nuevo_estado' => 'sometimes|in:CONFORME,OBSERVADO,CRITICO'
+            'observaciones_validacion' => 'nullable|string',
+            'acciones_correctivas' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
@@ -237,27 +258,27 @@ class ExistenciaController extends BaseController
 
             $datosAnteriores = $existencia->toArray();
 
-            $existencia->estado = $request->nuevo_estado ?? $existencia->estado;
-            $existencia->fecha_validacion = now();
+            $existencia->estado = 'VALIDADO';
             $existencia->usuario_valida_id = auth()->id();
+            $existencia->fecha_validacion = now();
             
-            $metadata = $existencia->metadata ?? [];
-            $metadata['validacion'] = [
+            $detalle = $existencia->detalle_calculo ?? [];
+            $detalle['validacion'] = [
                 'fecha' => now()->toDateTimeString(),
                 'usuario_id' => auth()->id(),
                 'observaciones' => $request->observaciones_validacion,
-                'acciones_correctivas' => $request->acciones_correctivas
+                'acciones_correctivas' => $request->acciones_correctivas,
             ];
-            $existencia->metadata = $metadata;
+            $existencia->detalle_calculo = $detalle;
             
             $existencia->save();
 
             $this->logActivity(
                 auth()->id(),
-                'inventarios',
-                'validacion_existencia',
-                'existencias',
-                "Existencia validada ID: {$id} - Estado: {$existencia->estado}",
+                'operaciones_cotidianas',
+                'VALIDACION_EXISTENCIA',
+                'Inventarios',
+                "Existencia validada: {$existencia->numero_registro}",
                 'existencias',
                 $existencia->id,
                 $datosAnteriores,
@@ -266,361 +287,119 @@ class ExistenciaController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($existencia, 'Existencia validada exitosamente');
+            return $this->success($existencia, 'Existencia validada exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al validar existencia', [$e->getMessage()], 500);
+            return $this->error('Error al validar existencia: ' . $e->getMessage(), 500);
         }
     }
 
     /**
-     * Ajustar existencia (corrección manual)
+     * Obtener inventario actual por tanque
      */
-    public function ajustar(Request $request, $id)
+    public function inventarioActual($tanqueId)
     {
-        $existencia = Existencia::find($id);
+        $tanque = Tanque::with('producto')->find($tanqueId);
 
-        if (!$existencia) {
-            return $this->sendError('Existencia no encontrada');
+        if (!$tanque) {
+            return $this->error('Tanque no encontrado', 404);
         }
 
-        if ($existencia->estado == 'VALIDADO') {
-            return $this->sendError('No se puede ajustar una existencia validada', [], 403);
-        }
+        // Obtener última existencia
+        $ultimaExistencia = Existencia::where('tanque_id', $tanqueId)
+            ->orderBy('fecha', 'desc')
+            ->orderBy('hora', 'desc')
+            ->first();
 
-        $validator = Validator::make($request->all(), [
-            'volumen_final_ajustado' => 'required|numeric|min:0',
-            'motivo_ajuste' => 'required|string|max:500',
-            'autorizacion' => 'required|string|max:100',
-            'observaciones' => 'nullable|string|max:500',
-            'archivo_soporte' => 'nullable|file|mimes:pdf,jpg,png|max:5120'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            // Guardar archivo de soporte
-            $rutaArchivo = null;
-            if ($request->hasFile('archivo_soporte')) {
-                $rutaArchivo = $request->file('archivo_soporte')
-                    ->store("ajustes/existencias/{$existencia->tanque_id}", 'public');
-            }
-
-            $datosAnteriores = $existencia->toArray();
-
-            $diferenciaAjuste = $request->volumen_final_ajustado - $existencia->volumen_final;
-
-            $metadata = $existencia->metadata ?? [];
-            $metadata['ajustes'][] = [
-                'fecha' => now()->toDateTimeString(),
-                'usuario_id' => auth()->id(),
-                'volumen_anterior' => $existencia->volumen_final,
-                'volumen_nuevo' => $request->volumen_final_ajustado,
-                'diferencia' => $diferenciaAjuste,
-                'motivo' => $request->motivo_ajuste,
-                'autorizacion' => $request->autorizacion,
-                'observaciones' => $request->observaciones,
-                'archivo' => $rutaArchivo
-            ];
-            $existencia->metadata = $metadata;
-            
-            $existencia->volumen_final = $request->volumen_final_ajustado;
-            $existencia->diferencia_volumen = $existencia->volumen_final - $existencia->volumen_esperado;
-            $existencia->porcentaje_diferencia = $existencia->volumen_esperado > 0 
-                ? abs(($existencia->diferencia_volumen / $existencia->volumen_esperado) * 100) 
-                : 0;
-            $existencia->estado = 'AJUSTADO';
-            
-            $existencia->save();
-
-            $this->logActivity(
-                auth()->id(),
-                'inventarios',
-                'ajuste_existencia',
-                'existencias',
-                "Ajuste de existencia ID: {$id} - Diferencia: {$diferenciaAjuste}",
-                'existencias',
-                $existencia->id,
-                $datosAnteriores,
-                $existencia->toArray()
-            );
-
-            DB::commit();
-
-            return $this->sendResponse($existencia, 'Existencia ajustada exitosamente');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return $this->sendError('Error al ajustar existencia', [$e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Obtener inventario actual
-     */
-    public function inventarioActual(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'instalacion_id' => 'required|exists:instalaciones,id',
-            'fecha' => 'required|date'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        $fecha = Carbon::parse($request->fecha);
-        
-        $tanques = Tanque::where('instalacion_id', $request->instalacion_id)
-            ->where('activo', true)
-            ->get();
-
-        $inventario = [];
-
-        foreach ($tanques as $tanque) {
-            // Obtener última existencia antes de la fecha
-            $existencia = Existencia::where('tanque_id', $tanque->id)
-                ->where('fecha', '<=', $fecha)
-                ->orderBy('fecha', 'desc')
-                ->first();
-
-            $inventario[] = [
-                'tanque' => [
-                    'id' => $tanque->id,
-                    'codigo' => $tanque->codigo,
-                    'tipo' => $tanque->tipo,
-                    'capacidad' => $tanque->capacidad_operativa
-                ],
-                'producto' => $existencia && $existencia->producto ? [
-                    'id' => $existencia->producto->id,
-                    'nombre' => $existencia->producto->nombre,
-                    'clave_sat' => $existencia->producto->clave_sat
-                ] : null,
-                'volumen' => $existencia ? $existencia->volumen_final : 0,
+        $inventario = [
+            'tanque' => [
+                'id' => $tanque->id,
+                'identificador' => $tanque->identificador,
+                'capacidad_operativa' => $tanque->capacidad_operativa,
+            ],
+            'producto' => $tanque->producto ? [
+                'id' => $tanque->producto->id,
+                'nombre' => $tanque->producto->nombre,
+                'clave_sat' => $tanque->producto->clave_sat,
+            ] : null,
+            'ultima_existencia' => $ultimaExistencia ? [
+                'fecha' => $ultimaExistencia->fecha,
+                'hora' => $ultimaExistencia->hora,
+                'volumen_corregido' => $ultimaExistencia->volumen_corregido,
+                'volumen_disponible' => $ultimaExistencia->volumen_disponible,
+                'temperatura' => $ultimaExistencia->temperatura,
+                'densidad' => $ultimaExistencia->densidad,
                 'porcentaje_ocupacion' => $tanque->capacidad_operativa > 0 
-                    ? ($existencia ? ($existencia->volumen_final / $tanque->capacidad_operativa) * 100 : 0)
+                    ? round(($ultimaExistencia->volumen_corregido / $tanque->capacidad_operativa) * 100, 2)
                     : 0,
-                'ultima_actualizacion' => $existencia ? $existencia->fecha : null,
-                'estado' => $existencia ? $existencia->estado : 'SIN_REGISTRO'
-            ];
-        }
-
-        // Calcular totales por producto
-        $resumen = [
-            'fecha' => $fecha->format('Y-m-d'),
-            'instalacion_id' => $request->instalacion_id,
-            'total_tanques' => count($inventario),
-            'tanques_con_producto' => collect($inventario)->whereNotNull('producto')->count(),
-            'volumen_total' => collect($inventario)->sum('volumen'),
-            'por_producto' => collect($inventario)
-                ->groupBy('producto.nombre')
-                ->map(function ($items, $producto) {
-                    return [
-                        'producto' => $producto ?: 'SIN PRODUCTO',
-                        'tanques' => $items->count(),
-                        'volumen' => $items->sum('volumen'),
-                        'porcentaje' => $items->sum('volumen') / max(collect($inventario)->sum('volumen'), 1) * 100
-                    ];
-                })->values(),
-            'detalle_tanques' => $inventario
+            ] : null,
+            'fecha_consulta' => now()->toDateTimeString(),
         ];
 
-        return $this->sendResponse($resumen, 'Inventario actual obtenido exitosamente');
+        return $this->success($inventario, 'Inventario actual obtenido exitosamente');
     }
 
     /**
      * Obtener histórico de existencias
      */
-    public function historico(Request $request)
+    public function historico(Request $request, $tanqueId)
     {
+        $tanque = Tanque::find($tanqueId);
+
+        if (!$tanque) {
+            return $this->error('Tanque no encontrado', 404);
+        }
+
         $validator = Validator::make($request->all(), [
-            'tanque_id' => 'required|exists:tanques,id',
             'fecha_inicio' => 'required|date',
-            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio'
+            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
-        $existencias = Existencia::where('tanque_id', $request->tanque_id)
+        $existencias = Existencia::where('tanque_id', $tanqueId)
             ->whereBetween('fecha', [
                 Carbon::parse($request->fecha_inicio),
                 Carbon::parse($request->fecha_fin)
             ])
             ->orderBy('fecha')
+            ->orderBy('hora')
             ->get();
-
-        $tanque = Tanque::find($request->tanque_id);
 
         $historico = [
             'tanque' => [
                 'id' => $tanque->id,
-                'codigo' => $tanque->codigo,
-                'capacidad' => $tanque->capacidad_operativa
+                'identificador' => $tanque->identificador,
             ],
             'periodo' => [
                 'inicio' => $request->fecha_inicio,
-                'fin' => $request->fecha_fin
+                'fin' => $request->fecha_fin,
             ],
             'resumen' => [
                 'total_registros' => $existencias->count(),
-                'volumen_promedio' => $existencias->avg('volumen_final'),
-                'volumen_minimo' => $existencias->min('volumen_final'),
-                'volumen_maximo' => $existencias->max('volumen_final'),
-                'volumen_inicial' => $existencias->first()?->volumen_final,
-                'volumen_final' => $existencias->last()?->volumen_final,
-                'variacion_periodo' => $existencias->count() > 1 
-                    ? $existencias->last()->volumen_final - $existencias->first()->volumen_final 
-                    : 0,
-                'dias_con_diferencia' => $existencias->where('estado', 'CRITICO')->count(),
-                'dias_con_observaciones' => $existencias->where('estado', 'OBSERVADO')->count()
+                'volumen_promedio' => $existencias->avg('volumen_corregido'),
+                'volumen_minimo' => $existencias->min('volumen_corregido'),
+                'volumen_maximo' => $existencias->max('volumen_corregido'),
+                'volumen_inicial' => $existencias->first()?->volumen_corregido,
+                'volumen_final' => $existencias->last()?->volumen_corregido,
             ],
-            'datos_diarios' => $existencias->map(function ($e) {
+            'datos' => $existencias->map(function ($e) {
                 return [
-                    'fecha' => $e->fecha->format('Y-m-d'),
-                    'volumen_inicial' => $e->volumen_inicial,
-                    'volumen_final' => $e->volumen_final,
-                    'recibido' => $e->volumen_recibido,
-                    'entregado' => $e->volumen_entregado,
-                    'diferencia' => $e->diferencia_volumen,
-                    'porcentaje_diferencia' => $e->porcentaje_diferencia,
+                    'fecha' => $e->fecha,
+                    'hora' => $e->hora,
+                    'volumen_corregido' => $e->volumen_corregido,
+                    'temperatura' => $e->temperatura,
+                    'densidad' => $e->densidad,
+                    'tipo_movimiento' => $e->tipo_movimiento,
                     'estado' => $e->estado,
-                    'temperatura' => $e->temperatura_promedio,
-                    'densidad' => $e->densidad_promedio
                 ];
             }),
-            'grafico' => [
-                'fechas' => $existencias->pluck('fecha')->map(function ($f) {
-                    return $f->format('Y-m-d');
-                }),
-                'volumenes' => $existencias->pluck('volumen_final'),
-                'linea_capacidad' => array_fill(0, $existencias->count(), $tanque->capacidad_operativa)
-            ]
         ];
 
-        return $this->sendResponse($historico, 'Histórico de existencias obtenido exitosamente');
-    }
-
-    /**
-     * Conciliar existencias (cierre de mes)
-     */
-    public function conciliarMensual(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'instalacion_id' => 'required|exists:instalaciones,id',
-            'anio' => 'required|integer|min:2020|max:2100',
-            'mes' => 'required|integer|min:1|max:12'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            $fechaInicio = Carbon::createFromDate($request->anio, $request->mes, 1)->startOfMonth();
-            $fechaFin = $fechaInicio->copy()->endOfMonth();
-
-            $tanques = Tanque::where('instalacion_id', $request->instalacion_id)
-                ->where('activo', true)
-                ->get();
-
-            $resultados = [];
-
-            foreach ($tanques as $tanque) {
-                $existencias = Existencia::where('tanque_id', $tanque->id)
-                    ->whereBetween('fecha', [$fechaInicio, $fechaFin])
-                    ->orderBy('fecha')
-                    ->get();
-
-                if ($existencias->isEmpty()) {
-                    continue;
-                }
-
-                $primera = $existencias->first();
-                $ultima = $existencias->last();
-
-                $resultado = [
-                    'tanque_id' => $tanque->id,
-                    'tanque_codigo' => $tanque->codigo,
-                    'producto' => $primera->producto ? $primera->producto->nombre : 'N/A',
-                    'inventario_inicial' => $primera->volumen_inicial,
-                    'inventario_final' => $ultima->volumen_final,
-                    'total_recibido' => $existencias->sum('volumen_recibido'),
-                    'total_entregado' => $existencias->sum('volumen_entregado'),
-                    'balance_esperado' => $primera->volumen_inicial + 
-                        $existencias->sum('volumen_recibido') - 
-                        $existencias->sum('volumen_entregado'),
-                    'balance_real' => $ultima->volumen_final,
-                    'diferencia_acumulada' => $ultima->volumen_final - (
-                        $primera->volumen_inicial + 
-                        $existencias->sum('volumen_recibido') - 
-                        $existencias->sum('volumen_entregado')
-                    ),
-                    'dias_con_diferencia' => $existencias->where('estado', 'CRITICO')->count(),
-                    'porcentaje_conciliacion' => $this->calcularPorcentajeConciliacion($existencias),
-                    'estado' => $this->determinarEstadoConciliacion($existencias)
-                ];
-
-                $resultados[] = $resultado;
-
-                // Marcar existencias como conciliadas
-                foreach ($existencias as $existencia) {
-                    $metadata = $existencia->metadata ?? [];
-                    $metadata['conciliacion_mensual'][] = [
-                        'fecha' => now()->toDateTimeString(),
-                        'anio' => $request->anio,
-                        'mes' => $request->mes,
-                        'usuario_id' => auth()->id()
-                    ];
-                    $existencia->metadata = $metadata;
-                    $existencia->save();
-                }
-            }
-
-            $this->logActivity(
-                auth()->id(),
-                'inventarios',
-                'conciliacion_mensual',
-                'existencias',
-                "Conciliación mensual realizada para instalación {$request->instalacion_id} - {$request->anio}/{$request->mes}",
-                'existencias',
-                null,
-                null,
-                ['resultados' => $resultados]
-            );
-
-            DB::commit();
-
-            return $this->sendResponse([
-                'periodo' => [
-                    'anio' => $request->anio,
-                    'mes' => $request->mes,
-                    'inicio' => $fechaInicio->format('Y-m-d'),
-                    'fin' => $fechaFin->format('Y-m-d')
-                ],
-                'instalacion_id' => $request->instalacion_id,
-                'resultados' => $resultados,
-                'resumen' => [
-                    'total_tanques' => count($resultados),
-                    'tanques_conforme' => collect($resultados)->where('estado', 'CONFORME')->count(),
-                    'tanques_observado' => collect($resultados)->where('estado', 'OBSERVADO')->count(),
-                    'tanques_critico' => collect($resultados)->where('estado', 'CRITICO')->count(),
-                    'diferencia_total' => collect($resultados)->sum('diferencia_acumulada')
-                ]
-            ], 'Conciliación mensual completada exitosamente');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return $this->sendError('Error en conciliación mensual', [$e->getMessage()], 500);
-        }
+        return $this->success($historico, 'Histórico de existencias obtenido exitosamente');
     }
 
     /**
@@ -631,11 +410,11 @@ class ExistenciaController extends BaseController
         $validator = Validator::make($request->all(), [
             'instalacion_id' => 'required|exists:instalaciones,id',
             'fecha_inicio' => 'required|date',
-            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio'
+            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         $existencias = Existencia::whereHas('tanque', function($q) use ($request) {
@@ -645,107 +424,69 @@ class ExistenciaController extends BaseController
                 Carbon::parse($request->fecha_inicio),
                 Carbon::parse($request->fecha_fin)
             ])
+            ->where('diferencia_volumen', '<', 0)
+            ->whereNotNull('diferencia_volumen')
             ->with(['tanque', 'producto'])
             ->get();
 
-        $mermas = [];
-
-        foreach ($existencias->groupBy('tanque_id') as $tanqueId => $registros) {
-            $tanque = $registros->first()->tanque;
-            
-            $diferencias = $registros->where('diferencia_volumen', '<', 0)->sum('diferencia_volumen');
-            $volumenTotal = $registros->avg('volumen_final');
-            
-            if (abs($diferencias) > 0) {
-                $mermas[] = [
-                    'tanque' => [
-                        'id' => $tanque->id,
-                        'codigo' => $tanque->codigo
-                    ],
-                    'producto' => $tanque->productoActual ? $tanque->productoActual->nombre : 'N/A',
-                    'dias_con_merma' => $registros->where('diferencia_volumen', '<', 0)->count(),
-                    'volumen_merma' => abs($diferencias),
-                    'porcentaje_merma' => $volumenTotal > 0 ? (abs($diferencias) / $volumenTotal) * 100 : 0,
-                    'merma_promedio_diaria' => abs($diferencias) / $registros->count(),
-                    'detalle_dias' => $registros
-                        ->where('diferencia_volumen', '<', 0)
-                        ->map(function ($r) {
-                            return [
-                                'fecha' => $r->fecha->format('Y-m-d'),
-                                'merma' => abs($r->diferencia_volumen),
-                                'porcentaje' => $r->porcentaje_diferencia,
-                                'estado' => $r->estado
-                            ];
-                        })->values()
-                ];
-            }
-        }
-
-        $resumen = [
+        $mermas = [
             'periodo' => [
                 'inicio' => $request->fecha_inicio,
-                'fin' => $request->fecha_fin
+                'fin' => $request->fecha_fin,
             ],
             'instalacion_id' => $request->instalacion_id,
-            'total_mermas' => collect($mermas)->sum('volumen_merma'),
-            'promedio_diario' => collect($mermas)->sum('volumen_merma') / 
-                max(Carbon::parse($request->fecha_inicio)->diffInDays(Carbon::parse($request->fecha_fin)), 1),
-            'tanques_con_merma' => count($mermas),
-            'detalle_tanques' => $mermas
+            'resumen' => [
+                'total_mermas' => abs($existencias->sum('diferencia_volumen')),
+                'promedio_diario' => $existencias->count() > 0 
+                    ? abs($existencias->sum('diferencia_volumen')) / $existencias->count()
+                    : 0,
+                'registros_con_merma' => $existencias->count(),
+            ],
+            'por_tanque' => $existencias->groupBy('tanque_id')
+                ->map(function ($items) {
+                    $tanque = $items->first()->tanque;
+                    return [
+                        'tanque_id' => $tanque->id,
+                        'identificador' => $tanque->identificador,
+                        'producto' => $items->first()->producto->nombre,
+                        'total_merma' => abs($items->sum('diferencia_volumen')),
+                        'dias_con_merma' => $items->count(),
+                        'merma_promedio' => abs($items->avg('diferencia_volumen')),
+                    ];
+                })->values(),
         ];
 
-        return $this->sendResponse($resumen, 'Reporte de mermas obtenido exitosamente');
+        return $this->success($mermas, 'Reporte de mermas obtenido exitosamente');
     }
 
     /**
-     * Métodos privados
+     * Obtener existencias por fecha
      */
-    private function generarAlarmaPorDiferencia($existencia)
+    public function porFecha(Request $request)
     {
-        $alarma = Alarma::create([
-            'instalacion_id' => $existencia->tanque->instalacion_id,
-            'tanque_id' => $existencia->tanque_id,
-            'tipo_alarma' => 'DIFERENCIA_INVENTARIO',
-            'gravedad' => 'CRITICA',
-            'descripcion' => "Diferencia crítica en inventario del tanque {$existencia->tanque->codigo}",
-            'detalle' => [
-                'existencia_id' => $existencia->id,
-                'fecha' => $existencia->fecha->format('Y-m-d'),
-                'volumen_esperado' => $existencia->volumen_esperado,
-                'volumen_real' => $existencia->volumen_final,
-                'diferencia' => $existencia->diferencia_volumen,
-                'porcentaje' => $existencia->porcentaje_diferencia,
-                'tolerancia' => $existencia->tolerancia_maxima
-            ],
-            'diagnostico_automatico' => 'La diferencia excede el doble de la tolerancia permitida',
-            'recomendaciones' => 'Verificar mediciones, posibles fugas o errores en registros de entrada/salida',
-            'fecha_alarma' => now(),
-            'estado' => 'ACTIVA'
+        $validator = Validator::make($request->all(), [
+            'fecha' => 'required|date',
+            'instalacion_id' => 'nullable|exists:instalaciones,id',
         ]);
 
-        return $alarma;
-    }
-
-    private function calcularPorcentajeConciliacion($existencias)
-    {
-        $totalDias = $existencias->count();
-        $diasConforme = $existencias->whereIn('estado', ['CONFORME', 'VALIDADO'])->count();
-        
-        return $totalDias > 0 ? ($diasConforme / $totalDias) * 100 : 0;
-    }
-
-    private function determinarEstadoConciliacion($existencias)
-    {
-        $criticos = $existencias->where('estado', 'CRITICO')->count();
-        $observados = $existencias->where('estado', 'OBSERVADO')->count();
-        $total = $existencias->count();
-
-        if ($criticos > 0) {
-            return 'CRITICO';
-        } elseif ($observados > $total * 0.2) { // Más del 20% observados
-            return 'OBSERVADO';
-        } else {
-            return 'CONFORME';
+        if ($validator->fails()) {
+            return $this->error('Error de validación', 422, $validator->errors());
         }
+
+        $query = Existencia::whereDate('fecha', $request->fecha)
+            ->with(['tanque.instalacion', 'producto']);
+
+        if ($request->has('instalacion_id')) {
+            $query->whereHas('tanque', function($q) use ($request) {
+                $q->where('instalacion_id', $request->instalacion_id);
+            });
+        }
+
+        $existencias = $query->orderBy('tanque_id')
+            ->orderBy('hora', 'desc')
+            ->get()
+            ->groupBy('tanque_id');
+
+        return $this->success($existencias, 'Existencias por fecha obtenidas exitosamente');
     }
 }

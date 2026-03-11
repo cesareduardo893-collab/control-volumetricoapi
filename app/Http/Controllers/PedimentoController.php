@@ -17,7 +17,11 @@ class PedimentoController extends BaseController
      */
     public function index(Request $request)
     {
-        $query = Pedimento::with(['contribuyente', 'producto']);
+        $query = Pedimento::with([
+            'contribuyente',
+            'producto',
+            'registroVolumetrico'
+        ]);
 
         // Filtros
         if ($request->has('contribuyente_id')) {
@@ -26,18 +30,6 @@ class PedimentoController extends BaseController
 
         if ($request->has('numero_pedimento')) {
             $query->where('numero_pedimento', 'LIKE', "%{$request->numero_pedimento}%");
-        }
-
-        if ($request->has('aduana')) {
-            $query->where('aduana', $request->aduana);
-        }
-
-        if ($request->has('tipo_operacion')) {
-            $query->where('tipo_operacion', $request->tipo_operacion);
-        }
-
-        if ($request->has('regimen')) {
-            $query->where('regimen', $request->regimen);
         }
 
         if ($request->has('producto_id')) {
@@ -64,10 +56,14 @@ class PedimentoController extends BaseController
             $query->where('estado', $request->estado);
         }
 
+        if ($request->has('registro_volumetrico_id')) {
+            $query->where('registro_volumetrico_id', $request->registro_volumetrico_id);
+        }
+
         $pedimentos = $query->orderBy('fecha_pedimento', 'desc')
             ->paginate($request->get('per_page', 15));
 
-        return $this->sendResponse($pedimentos, 'Pedimentos obtenidos exitosamente');
+        return $this->success($pedimentos, 'Pedimentos obtenidos exitosamente');
     }
 
     /**
@@ -76,172 +72,76 @@ class PedimentoController extends BaseController
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
+            'numero_pedimento' => 'required|string|max:255|unique:pedimentos,numero_pedimento',
             'contribuyente_id' => 'required|exists:contribuyentes,id',
             'producto_id' => 'required|exists:productos,id',
-            'numero_pedimento' => 'required|string|max:50|unique:pedimentos,numero_pedimento',
-            'aduana' => 'required|string|max:100',
-            'seccion_aduana' => 'nullable|string|max:100',
-            'tipo_operacion' => 'required|in:IMPORTACION,EXPORTACION',
-            'regimen' => 'required|string|max:50',
-            'fecha_pedimento' => 'required|date',
-            'fecha_pago' => 'nullable|date',
-            'fecha_entrada_salida' => 'nullable|date',
-            'fecha_rectificacion' => 'nullable|date',
-            'patente' => 'required|string|max:50',
-            'agente_aduanal' => 'required|string|max:255',
-            'rfc_agente' => 'required|string|size:13',
-            'importador_exportador' => 'required|string|max:255',
-            'rfc_importador_exportador' => 'required|string|size:13',
-            'domicilio' => 'required|string|max:500',
-            'pais_origen' => 'required_if:tipo_operacion,IMPORTACION|string|size:3',
-            'pais_destino' => 'required_if:tipo_operacion,EXPORTACION|string|size:3',
-            'pais_procedencia' => 'nullable|string|size:3',
-            'medio_transporte' => 'required|in:MARITIMO,AEREO,TERRESTRE,FERROVIARIO,MULTIMODAL',
-            'identificacion_transporte' => 'nullable|string|max:100',
-            'contenedor' => 'nullable|string|max:50',
-            'bl_numero' => 'nullable|string|max:50',
-            'guia_numero' => 'nullable|string|max:50',
-            'incoterm' => 'required|string|max:10',
-            'moneda' => 'required|string|size:3',
-            'tipo_cambio' => 'nullable|numeric|min:0',
-            'valor_aduana' => 'required|numeric|min:0',
+            'punto_exportacion' => 'nullable|string|max:255',
+            'punto_internacion' => 'nullable|string|max:255',
+            'pais_destino' => 'required|string|size:3',
+            'pais_origen' => 'required|string|size:3',
+            'medio_transporte_entrada' => 'required|string|max:255',
+            'medio_transporte_salida' => 'nullable|string|max:255',
+            'incoterms' => 'required|string|max:10',
+            'volumen' => 'required|numeric|min:0',
+            'unidad_medida' => 'required|string|max:10',
             'valor_comercial' => 'required|numeric|min:0',
-            'flete' => 'nullable|numeric|min:0',
-            'seguro' => 'nullable|numeric|min:0',
-            'embalaje' => 'nullable|numeric|min:0',
-            'otros_gastos' => 'nullable|numeric|min:0',
-            'cantidad' => 'required|numeric|min:0',
-            'unidad_medida' => 'required|in:KGM,TNE,LTR,MTQ,MTK,MT,NO',
-            'unidad_comercial' => 'nullable|string|max:50',
-            'cantidad_comercial' => 'nullable|numeric|min:0',
-            'peso_bruto' => 'required|numeric|min:0',
-            'peso_neto' => 'required|numeric|min:0',
-            'bultos' => 'nullable|integer|min:0',
-            'tipo_bulto' => 'nullable|string|max:50',
-            'marcas' => 'nullable|string|max:500',
-            'numero_conocimiento' => 'nullable|string|max:50',
-            'fraccion_arancelaria' => 'required|string|max:20',
-            'nico' => 'nullable|string|max:50',
-            'permiso_previo' => 'nullable|string|max:50',
-            'numero_permiso' => 'nullable|string|max:50',
-            'fecha_vencimiento_permiso' => 'nullable|date',
-            'contribuciones' => 'required|array',
-            'contribuciones.iva' => 'required|numeric|min:0',
-            'contribuciones.ieps' => 'nullable|numeric|min:0',
-            'contribuciones.arancel' => 'required|numeric|min:0',
-            'contribuciones.dta' => 'nullable|numeric|min:0',
-            'contribuciones.total' => 'required|numeric|min:0',
-            'observaciones' => 'nullable|string|max:1000',
-            'archivo_pedimento' => 'nullable|file|mimes:pdf|max:10240',
-            'archivo_documentos' => 'nullable|array',
-            'archivo_documentos.*' => 'file|mimes:pdf,jpg,png|max:5120',
-            'estado' => 'required|in:ACTIVO,RECTIFICADO,CANCELADO',
-            'metadata' => 'nullable|array'
+            'moneda' => 'required|string|size:3',
+            'fecha_pedimento' => 'required|date',
+            'fecha_arribo' => 'nullable|date',
+            'fecha_pago' => 'nullable|date',
+            'registro_volumetrico_id' => 'nullable|exists:registros_volumetricos,id',
+            'estado' => 'required|in:ACTIVO,UTILIZADO,CANCELADO',
+            'metadatos_aduana' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            // Guardar archivos
-            $rutaArchivo = null;
-            if ($request->hasFile('archivo_pedimento')) {
-                $rutaArchivo = $request->file('archivo_pedimento')
-                    ->store("pedimentos/{$request->contribuyente_id}/principal", 'public');
-            }
-
-            $documentos = [];
-            if ($request->hasFile('archivo_documentos')) {
-                foreach ($request->file('archivo_documentos') as $index => $archivo) {
-                    $ruta = $archivo->store("pedimentos/{$request->contribuyente_id}/documentos", 'public');
-                    $documentos[] = [
-                        'nombre_original' => $archivo->getClientOriginalName(),
-                        'ruta' => $ruta,
-                        'tipo' => $archivo->getMimeType(),
-                        'tamano' => $archivo->getSize()
-                    ];
-                }
-            }
-
             $pedimento = Pedimento::create([
+                'numero_pedimento' => $request->numero_pedimento,
                 'contribuyente_id' => $request->contribuyente_id,
                 'producto_id' => $request->producto_id,
-                'numero_pedimento' => $request->numero_pedimento,
-                'aduana' => $request->aduana,
-                'seccion_aduana' => $request->seccion_aduana,
-                'tipo_operacion' => $request->tipo_operacion,
-                'regimen' => $request->regimen,
-                'fecha_pedimento' => $request->fecha_pedimento,
-                'fecha_pago' => $request->fecha_pago,
-                'fecha_entrada_salida' => $request->fecha_entrada_salida,
-                'fecha_rectificacion' => $request->fecha_rectificacion,
-                'patente' => $request->patente,
-                'agente_aduanal' => $request->agente_aduanal,
-                'rfc_agente' => $request->rfc_agente,
-                'importador_exportador' => $request->importador_exportador,
-                'rfc_importador_exportador' => $request->rfc_importador_exportador,
-                'domicilio' => $request->domicilio,
-                'pais_origen' => $request->pais_origen,
+                'punto_exportacion' => $request->punto_exportacion,
+                'punto_internacion' => $request->punto_internacion,
                 'pais_destino' => $request->pais_destino,
-                'pais_procedencia' => $request->pais_procedencia,
-                'medio_transporte' => $request->medio_transporte,
-                'identificacion_transporte' => $request->identificacion_transporte,
-                'contenedor' => $request->contenedor,
-                'bl_numero' => $request->bl_numero,
-                'guia_numero' => $request->guia_numero,
-                'incoterm' => $request->incoterm,
-                'moneda' => $request->moneda,
-                'tipo_cambio' => $request->tipo_cambio,
-                'valor_aduana' => $request->valor_aduana,
-                'valor_comercial' => $request->valor_comercial,
-                'flete' => $request->flete,
-                'seguro' => $request->seguro,
-                'embalaje' => $request->embalaje,
-                'otros_gastos' => $request->otros_gastos,
-                'cantidad' => $request->cantidad,
+                'pais_origen' => $request->pais_origen,
+                'medio_transporte_entrada' => $request->medio_transporte_entrada,
+                'medio_transporte_salida' => $request->medio_transporte_salida,
+                'incoterms' => $request->incoterms,
+                'volumen' => $request->volumen,
                 'unidad_medida' => $request->unidad_medida,
-                'unidad_comercial' => $request->unidad_comercial,
-                'cantidad_comercial' => $request->cantidad_comercial,
-                'peso_bruto' => $request->peso_bruto,
-                'peso_neto' => $request->peso_neto,
-                'bultos' => $request->bultos,
-                'tipo_bulto' => $request->tipo_bulto,
-                'marcas' => $request->marcas,
-                'numero_conocimiento' => $request->numero_conocimiento,
-                'fraccion_arancelaria' => $request->fraccion_arancelaria,
-                'nico' => $request->nico,
-                'permiso_previo' => $request->permiso_previo,
-                'numero_permiso' => $request->numero_permiso,
-                'fecha_vencimiento_permiso' => $request->fecha_vencimiento_permiso,
-                'contribuciones' => $request->contribuciones,
-                'observaciones' => $request->observaciones,
-                'archivo_pedimento' => $rutaArchivo,
-                'archivo_documentos' => $documentos,
+                'valor_comercial' => $request->valor_comercial,
+                'moneda' => $request->moneda,
+                'fecha_pedimento' => $request->fecha_pedimento,
+                'fecha_arribo' => $request->fecha_arribo,
+                'fecha_pago' => $request->fecha_pago,
+                'registro_volumetrico_id' => $request->registro_volumetrico_id,
                 'estado' => $request->estado,
-                'metadata' => $request->metadata
+                'metadatos_aduana' => $request->metadatos_aduana,
             ]);
 
             $this->logActivity(
                 auth()->id(),
                 'comercio_exterior',
-                'creacion_pedimento',
-                'pedimentos',
-                "Pedimento creado: {$pedimento->numero_pedimento} - {$pedimento->tipo_operacion}",
+                'CREACION_PEDIMENTO',
+                'Comercio Exterior',
+                "Pedimento creado: {$pedimento->numero_pedimento}",
                 'pedimentos',
                 $pedimento->id
             );
 
             DB::commit();
 
-            return $this->sendResponse($pedimento->load(['contribuyente', 'producto']), 
+            return $this->success($pedimento->load(['contribuyente', 'producto']), 
                 'Pedimento creado exitosamente', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al crear pedimento', [$e->getMessage()], 500);
+            return $this->error('Error al crear pedimento: ' . $e->getMessage(), 500);
         }
     }
 
@@ -253,16 +153,14 @@ class PedimentoController extends BaseController
         $pedimento = Pedimento::with([
             'contribuyente',
             'producto',
-            'registrosVolumetricos' => function($q) {
-                $q->latest()->limit(10);
-            }
+            'registroVolumetrico'
         ])->find($id);
 
         if (!$pedimento) {
-            return $this->sendError('Pedimento no encontrado');
+            return $this->error('Pedimento no encontrado', 404);
         }
 
-        return $this->sendResponse($pedimento, 'Pedimento obtenido exitosamente');
+        return $this->success($pedimento, 'Pedimento obtenido exitosamente');
     }
 
     /**
@@ -273,69 +171,32 @@ class PedimentoController extends BaseController
         $pedimento = Pedimento::find($id);
 
         if (!$pedimento) {
-            return $this->sendError('Pedimento no encontrado');
-        }
-
-        if ($pedimento->estado == 'CANCELADO') {
-            return $this->sendError('No se puede modificar un pedimento cancelado', [], 403);
+            return $this->error('Pedimento no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
-            'observaciones' => 'nullable|string|max:1000',
-            'estado' => 'sometimes|in:ACTIVO,RECTIFICADO,CANCELADO',
-            'archivo_pedimento' => 'nullable|file|mimes:pdf|max:10240',
-            'archivo_documentos' => 'nullable|array',
-            'archivo_documentos.*' => 'file|mimes:pdf,jpg,png|max:5120',
-            'metadata' => 'nullable|array'
+            'fecha_arribo' => 'nullable|date',
+            'fecha_pago' => 'nullable|date',
+            'registro_volumetrico_id' => 'nullable|exists:registros_volumetricos,id',
+            'estado' => 'sometimes|in:ACTIVO,UTILIZADO,CANCELADO',
+            'metadatos_aduana' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
             $datosAnteriores = $pedimento->toArray();
-
-            // Actualizar archivo si se proporciona
-            if ($request->hasFile('archivo_pedimento')) {
-                $rutaArchivo = $request->file('archivo_pedimento')
-                    ->store("pedimentos/{$pedimento->contribuyente_id}/principal", 'public');
-                $pedimento->archivo_pedimento = $rutaArchivo;
-            }
-
-            // Actualizar documentos si se proporcionan
-            if ($request->hasFile('archivo_documentos')) {
-                $documentos = $pedimento->archivo_documentos ?? [];
-                foreach ($request->file('archivo_documentos') as $archivo) {
-                    $ruta = $archivo->store("pedimentos/{$pedimento->contribuyente_id}/documentos", 'public');
-                    $documentos[] = [
-                        'nombre_original' => $archivo->getClientOriginalName(),
-                        'ruta' => $ruta,
-                        'tipo' => $archivo->getMimeType(),
-                        'tamano' => $archivo->getSize(),
-                        'fecha' => now()->toDateTimeString()
-                    ];
-                }
-                $pedimento->archivo_documentos = $documentos;
-            }
-
-            $pedimento->observaciones = $request->observaciones ?? $pedimento->observaciones;
-            $pedimento->estado = $request->estado ?? $pedimento->estado;
-            
-            if ($request->has('metadata')) {
-                $metadata = array_merge($pedimento->metadata ?? [], $request->metadata);
-                $pedimento->metadata = $metadata;
-            }
-            
-            $pedimento->save();
+            $pedimento->update($request->all());
 
             $this->logActivity(
                 auth()->id(),
                 'comercio_exterior',
-                'actualizacion_pedimento',
-                'pedimentos',
+                'ACTUALIZACION_PEDIMENTO',
+                'Comercio Exterior',
                 "Pedimento actualizado: {$pedimento->numero_pedimento}",
                 'pedimentos',
                 $pedimento->id,
@@ -345,11 +206,11 @@ class PedimentoController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($pedimento, 'Pedimento actualizado exitosamente');
+            return $this->success($pedimento, 'Pedimento actualizado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al actualizar pedimento', [$e->getMessage()], 500);
+            return $this->error('Error al actualizar pedimento: ' . $e->getMessage(), 500);
         }
     }
 
@@ -361,26 +222,19 @@ class PedimentoController extends BaseController
         $pedimento = Pedimento::find($id);
 
         if (!$pedimento) {
-            return $this->sendError('Pedimento no encontrado');
+            return $this->error('Pedimento no encontrado', 404);
         }
 
         if ($pedimento->estado == 'CANCELADO') {
-            return $this->sendError('El pedimento ya está cancelado', [], 403);
-        }
-
-        // Verificar si tiene registros volumétricos asociados
-        $tieneRegistros = $pedimento->registrosVolumetricos()->exists();
-        
-        if ($tieneRegistros) {
-            return $this->sendError('No se puede cancelar el pedimento porque tiene registros volumétricos asociados', [], 409);
+            return $this->error('El pedimento ya está cancelado', 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'motivo_cancelacion' => 'required|string|max:500'
+            'motivo_cancelacion' => 'required|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
@@ -390,22 +244,22 @@ class PedimentoController extends BaseController
 
             $pedimento->estado = 'CANCELADO';
             
-            $metadata = $pedimento->metadata ?? [];
-            $metadata['cancelacion'] = [
+            $metadatos = $pedimento->metadatos_aduana ?? [];
+            $metadatos['cancelacion'] = [
                 'fecha' => now()->toDateTimeString(),
                 'usuario_id' => auth()->id(),
-                'motivo' => $request->motivo_cancelacion
+                'motivo' => $request->motivo_cancelacion,
             ];
-            $pedimento->metadata = $metadata;
+            $pedimento->metadatos_aduana = $metadatos;
             
             $pedimento->save();
 
             $this->logActivity(
                 auth()->id(),
                 'comercio_exterior',
-                'cancelacion_pedimento',
-                'pedimentos',
-                "Pedimento cancelado: {$pedimento->numero_pedimento} - Motivo: {$request->motivo_cancelacion}",
+                'CANCELACION_PEDIMENTO',
+                'Comercio Exterior',
+                "Pedimento cancelado: {$pedimento->numero_pedimento}",
                 'pedimentos',
                 $pedimento->id,
                 $datosAnteriores,
@@ -414,114 +268,65 @@ class PedimentoController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($pedimento, 'Pedimento cancelado exitosamente');
+            return $this->success($pedimento, 'Pedimento cancelado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al cancelar pedimento', [$e->getMessage()], 500);
+            return $this->error('Error al cancelar pedimento: ' . $e->getMessage(), 500);
         }
     }
 
     /**
-     * Descargar archivo del pedimento
+     * Marcar como utilizado
      */
-    public function descargar($id)
+    public function marcarUtilizado(Request $request, $id)
     {
         $pedimento = Pedimento::find($id);
 
         if (!$pedimento) {
-            return $this->sendError('Pedimento no encontrado');
+            return $this->error('Pedimento no encontrado', 404);
         }
 
-        if (!$pedimento->archivo_pedimento || !Storage::disk('public')->exists($pedimento->archivo_pedimento)) {
-            return $this->sendError('Archivo no encontrado', [], 404);
-        }
-
-        $nombreArchivo = "pedimento_{$pedimento->numero_pedimento}.pdf";
-
-        return Storage::disk('public')->download($pedimento->archivo_pedimento, $nombreArchivo);
-    }
-
-    /**
-     * Conciliar con registros volumétricos
-     */
-    public function conciliar(Request $request, $id)
-    {
-        $pedimento = Pedimento::find($id);
-
-        if (!$pedimento) {
-            return $this->sendError('Pedimento no encontrado');
+        if ($pedimento->estado != 'ACTIVO') {
+            return $this->error('El pedimento no está en estado ACTIVO', 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'registro_volumetrico_id' => 'required|exists:registros_volumetricos,id'
+            'registro_volumetrico_id' => 'required|exists:registros_volumetricos,id',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            $registro = RegistroVolumetrico::find($request->registro_volumetrico_id);
+            $datosAnteriores = $pedimento->toArray();
 
-            // Verificar que el registro no tenga ya un pedimento asociado
-            if ($registro->pedimento_id) {
-                return $this->sendError('El registro volumétrico ya tiene un pedimento asociado', [], 409);
-            }
-
-            // Verificar que el producto coincida
-            if ($registro->producto_id != $pedimento->producto_id) {
-                return $this->sendError('El producto del registro no coincide con el del pedimento', [], 422);
-            }
-
-            $datosAnteriores = $registro->toArray();
-            
-            $registro->pedimento_id = $pedimento->id;
-            
-            $metadata = $registro->metadata ?? [];
-            $metadata['conciliacion_pedimento'] = [
-                'fecha' => now()->toDateTimeString(),
-                'usuario_id' => auth()->id(),
-                'pedimento' => $pedimento->numero_pedimento
-            ];
-            $registro->metadata = $metadata;
-            
-            $registro->save();
-
-            // Actualizar también el pedimento
-            $pedimentoMetadata = $pedimento->metadata ?? [];
-            $pedimentoMetadata['conciliaciones'][] = [
-                'fecha' => now()->toDateTimeString(),
-                'registro_volumetrico_id' => $registro->id,
-                'volumen' => $registro->volumen_corregido
-            ];
-            $pedimento->metadata = $pedimentoMetadata;
+            $pedimento->estado = 'UTILIZADO';
+            $pedimento->registro_volumetrico_id = $request->registro_volumetrico_id;
             $pedimento->save();
 
             $this->logActivity(
                 auth()->id(),
                 'comercio_exterior',
-                'conciliacion_pedimento',
-                'pedimentos',
-                "Pedimento {$pedimento->numero_pedimento} conciliado con registro volumétrico {$registro->id}",
+                'UTILIZACION_PEDIMENTO',
+                'Comercio Exterior',
+                "Pedimento utilizado: {$pedimento->numero_pedimento}",
                 'pedimentos',
                 $pedimento->id,
-                null,
-                ['registro_id' => $registro->id, 'volumen' => $registro->volumen_corregido]
+                $datosAnteriores,
+                $pedimento->toArray()
             );
 
             DB::commit();
 
-            return $this->sendResponse([
-                'pedimento' => $pedimento,
-                'registro' => $registro
-            ], 'Conciliación realizada exitosamente');
+            return $this->success($pedimento, 'Pedimento marcado como utilizado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al conciliar pedimento', [$e->getMessage()], 500);
+            return $this->error('Error al marcar pedimento como utilizado: ' . $e->getMessage(), 500);
         }
     }
 
@@ -532,12 +337,12 @@ class PedimentoController extends BaseController
     {
         $validator = Validator::make($request->all(), [
             'contribuyente_id' => 'required|exists:contribuyentes,id',
-            'anio' => 'required|integer|min:2020|max:2100',
-            'mes' => 'nullable|integer|min:1|max:12'
+            'anio' => 'required|integer|min:2020',
+            'mes' => 'nullable|integer|min:1|max:12',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         $query = Pedimento::where('contribuyente_id', $request->contribuyente_id)
@@ -547,64 +352,51 @@ class PedimentoController extends BaseController
             $query->whereMonth('fecha_pedimento', $request->mes);
         }
 
-        $pedimentos = $query->get();
+        $pedimentos = $query->with('producto')->get();
 
         $resumen = [
             'contribuyente_id' => $request->contribuyente_id,
             'periodo' => [
                 'anio' => $request->anio,
-                'mes' => $request->mes ?? 'TODOS'
+                'mes' => $request->mes ?? 'TODOS',
             ],
             'totales' => [
                 'cantidad_pedimentos' => $pedimentos->count(),
-                'valor_total_importaciones' => $pedimentos->where('tipo_operacion', 'IMPORTACION')->sum('valor_aduana'),
-                'valor_total_exportaciones' => $pedimentos->where('tipo_operacion', 'EXPORTACION')->sum('valor_aduana'),
-                'volumen_total_importaciones' => $pedimentos->where('tipo_operacion', 'IMPORTACION')->sum('cantidad'),
-                'volumen_total_exportaciones' => $pedimentos->where('tipo_operacion', 'EXPORTACION')->sum('cantidad'),
-                'contribuciones_totales' => $pedimentos->sum('contribuciones.total')
+                'volumen_total' => $pedimentos->sum('volumen'),
+                'valor_comercial_total' => $pedimentos->sum('valor_comercial'),
             ],
-            'por_tipo' => [
-                'importaciones' => $pedimentos->where('tipo_operacion', 'IMPORTACION')->count(),
-                'exportaciones' => $pedimentos->where('tipo_operacion', 'EXPORTACION')->count()
-            ],
-            'por_aduana' => $pedimentos->groupBy('aduana')
-                ->map(function ($items) {
-                    return [
-                        'cantidad' => $items->count(),
-                        'valor' => $items->sum('valor_aduana')
-                    ];
-                }),
             'por_producto' => $pedimentos->groupBy('producto_id')
                 ->map(function ($items) {
                     $producto = $items->first()->producto;
                     return [
                         'producto' => $producto ? $producto->nombre : 'N/A',
                         'cantidad' => $items->count(),
-                        'volumen' => $items->sum('cantidad'),
-                        'valor' => $items->sum('valor_aduana')
+                        'volumen' => $items->sum('volumen'),
+                        'valor' => $items->sum('valor_comercial'),
                     ];
                 })->values(),
-            'por_pais' => $pedimentos->groupBy('pais_origen')
+            'por_pais_origen' => $pedimentos->groupBy('pais_origen')
                 ->map(function ($items, $pais) {
                     return [
                         'pais' => $pais,
                         'cantidad' => $items->count(),
-                        'valor' => $items->sum('valor_aduana')
+                        'volumen' => $items->sum('volumen'),
+                        'valor' => $items->sum('valor_comercial'),
                     ];
                 })->values(),
             'tendencia_mensual' => $pedimentos->groupBy(function ($item) {
-                    return Carbon::parse($item->fecha_pedimento)->format('Y-m');
+                    return $item->fecha_pedimento->format('Y-m');
                 })
                 ->map(function ($items, $mes) {
                     return [
                         'mes' => $mes,
-                        'importaciones' => $items->where('tipo_operacion', 'IMPORTACION')->count(),
-                        'exportaciones' => $items->where('tipo_operacion', 'EXPORTACION')->count(),
-                        'valor' => $items->sum('valor_aduana')
+                        'cantidad' => $items->count(),
+                        'volumen' => $items->sum('volumen'),
+                        'valor' => $items->sum('valor_comercial'),
                     ];
-                })->values()
+                })->values(),
         ];
 
-        return $this->sendResponse($resumen, 'Resumen de comercio exterior obtenido exitosamente');
+        return $this->success($resumen, 'Resumen de comercio exterior obtenido exitosamente');
     }
 }

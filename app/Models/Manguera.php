@@ -25,6 +25,10 @@ class Manguera extends Model
         'activo' => 'boolean',
     ];
 
+    public const ESTADO_OPERATIVO = 'OPERATIVO';
+    public const ESTADO_MANTENIMIENTO = 'MANTENIMIENTO';
+    public const ESTADO_FUERA_SERVICIO = 'FUERA_SERVICIO';
+
     public function dispensario()
     {
         return $this->belongsTo(Dispensario::class);

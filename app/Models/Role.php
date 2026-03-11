@@ -27,9 +27,9 @@ class Role extends Model
         'configuracion_ui' => 'array',
         'es_administrador' => 'boolean',
         'activo' => 'boolean',
+        'nivel_jerarquico' => 'integer',
     ];
 
-    // Relaciones
     public function users()
     {
         return $this->belongsToMany(User::class, 'user_role')

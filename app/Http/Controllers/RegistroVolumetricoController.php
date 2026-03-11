@@ -8,6 +8,7 @@ use App\Models\Tanque;
 use App\Models\Medidor;
 use App\Models\Producto;
 use App\Models\Alarma;
+use App\Models\Dictamen;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -18,12 +19,8 @@ class RegistroVolumetricoController extends BaseController
     /**
      * Constantes para condiciones de referencia
      */
-    const TEMP_REF_HIDROCARBUROS = 15.56;
-    const TEMP_REF_PETROLIFEROS = 20.00;
-    const PRESION_REF = 101.325;
-    
-    const UMBRAL_DIF_LIQUIDOS = 0.5; // 0.5%
-    const UMBRAL_DIF_GASEOSOS = 1.0; // 1.0%
+    const TEMP_REFERENCIA = 20.00;
+    const PRESION_REFERENCIA = 101.325;
 
     /**
      * Listar registros volumétricos
@@ -36,23 +33,15 @@ class RegistroVolumetricoController extends BaseController
             'medidor',
             'producto',
             'usuarioRegistro',
-            'usuarioValida'
+            'usuarioValida',
+            'dictamen'
         ]);
 
-        // Filtros obligatorios por normativa
+        // Filtros
         if ($request->has('instalacion_id')) {
             $query->where('instalacion_id', $request->instalacion_id);
         }
 
-        if ($request->has('fecha_inicio')) {
-            $query->where('fecha_operacion', '>=', Carbon::parse($request->fecha_inicio)->startOfDay());
-        }
-
-        if ($request->has('fecha_fin')) {
-            $query->where('fecha_operacion', '<=', Carbon::parse($request->fecha_fin)->endOfDay());
-        }
-
-        // Filtros opcionales
         if ($request->has('tanque_id')) {
             $query->where('tanque_id', $request->tanque_id);
         }
@@ -65,26 +54,47 @@ class RegistroVolumetricoController extends BaseController
             $query->where('producto_id', $request->producto_id);
         }
 
+        if ($request->has('numero_registro')) {
+            $query->where('numero_registro', 'LIKE', "%{$request->numero_registro}%");
+        }
+
+        if ($request->has('fecha')) {
+            $query->whereDate('fecha', $request->fecha);
+        }
+
+        if ($request->has('fecha_inicio')) {
+            $query->where('fecha', '>=', Carbon::parse($request->fecha_inicio));
+        }
+
+        if ($request->has('fecha_fin')) {
+            $query->where('fecha', '<=', Carbon::parse($request->fecha_fin));
+        }
+
         if ($request->has('tipo_registro')) {
             $query->where('tipo_registro', $request->tipo_registro);
+        }
+
+        if ($request->has('operacion')) {
+            $query->where('operacion', $request->operacion);
         }
 
         if ($request->has('estado')) {
             $query->where('estado', $request->estado);
         }
 
-        // Validar que no exceda el rango de consulta permitido (30 días por normativa)
-        if ($request->has('fecha_inicio') && $request->has('fecha_fin')) {
-            $dias = Carbon::parse($request->fecha_inicio)->diffInDays(Carbon::parse($request->fecha_fin));
-            if ($dias > 30) {
-                return $this->sendError('El rango de consulta no puede exceder 30 días', [], 400);
-            }
+        if ($request->has('documento_fiscal_uuid')) {
+            $query->where('documento_fiscal_uuid', $request->documento_fiscal_uuid);
         }
 
-        $registros = $query->orderBy('fecha_operacion', 'desc')
+        if ($request->has('rfc_contraparte')) {
+            $query->where('rfc_contraparte', $request->rfc_contraparte);
+        }
+
+        $registros = $query->orderBy('fecha', 'desc')
+            ->orderBy('hora_inicio', 'desc')
             ->paginate($request->get('per_page', 15));
 
-        return $this->sendResponse($registros, 'Registros volumétricos obtenidos exitosamente');
+        return $this->success($registros, 'Registros volumétricos obtenidos exitosamente');
     }
 
     /**
@@ -93,130 +103,129 @@ class RegistroVolumetricoController extends BaseController
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
+            'numero_registro' => 'required|string|max:255|unique:registros_volumetricos,numero_registro',
             'instalacion_id' => 'required|exists:instalaciones,id',
             'tanque_id' => 'required|exists:tanques,id',
             'medidor_id' => 'nullable|exists:medidores,id',
             'producto_id' => 'required|exists:productos,id',
-            'dictamen_id' => 'nullable|exists:dictamenes,id',
-            'cfdi_id' => 'nullable|exists:cfdis,id',
-            'pedimento_id' => 'nullable|exists:pedimentos,id',
-            'tipo_registro' => 'required|in:RECEPCION,ENTREGA,TRASPASO,DEVOLUCION,CONSUMO,PERDIDA',
-            'fecha_operacion' => 'required|date_format:Y-m-d H:i:s',
+            'usuario_registro_id' => 'required|exists:users,id',
+            'usuario_valida_id' => 'nullable|exists:users,id',
+            'fecha' => 'required|date',
+            'hora_inicio' => 'required|date_format:H:i:s',
+            'hora_fin' => 'required|date_format:H:i:s|after:hora_inicio',
             'volumen_inicial' => 'required|numeric|min:0',
             'volumen_final' => 'required|numeric|min:0',
-            'volumen_recibido' => 'nullable|numeric|min:0',
-            'volumen_entregado' => 'nullable|numeric|min:0',
-            'temperatura' => 'required|numeric|between:-50,150',
-            'presion' => 'required|numeric|min:0',
-            'densidad' => 'nullable|numeric|min:0',
-            'api_gravedad' => 'nullable|numeric|min:0|max:100',
-            'composicion' => 'nullable|array',
-            'composicion.*.componente' => 'required_with:composicion|string',
-            'composicion.*.porcentaje' => 'required_with:composicion|numeric|min:0|max:100',
-            'observaciones' => 'nullable|string|max:1000',
-            'metadata' => 'nullable|array'
+            'volumen_operacion' => 'required|numeric|min:0',
+            'temperatura_inicial' => 'required|numeric',
+            'temperatura_final' => 'required|numeric',
+            'presion_inicial' => 'nullable|numeric|min:0',
+            'presion_final' => 'nullable|numeric|min:0',
+            'densidad' => 'required|numeric|min:0',
+            'volumen_corregido' => 'required|numeric|min:0',
+            'factor_correccion' => 'required|numeric|min:0',
+            'detalle_correccion' => 'nullable|array',
+            'masa' => 'nullable|numeric|min:0',
+            'poder_calorifico' => 'nullable|numeric|min:0',
+            'energia_total' => 'nullable|numeric|min:0',
+            'tipo_registro' => 'required|in:operacion,acumulado,existencias',
+            'operacion' => 'required|in:recepcion,entrega,inventario_inicial,inventario_final,venta',
+            'rfc_contraparte' => 'nullable|string|size:13',
+            'documento_fiscal_uuid' => 'nullable|string|size:36',
+            'folio_fiscal' => 'nullable|string|max:255',
+            'tipo_cfdi' => 'nullable|string|max:255',
+            'estado' => 'required|in:PENDIENTE,PROCESADO,VALIDADO,ERROR,CANCELADO,CON_ALARMA',
+            'fecha_validacion' => 'nullable|date',
+            'validaciones_realizadas' => 'nullable|array',
+            'inconsistencias_detectadas' => 'nullable|array',
+            'porcentaje_diferencia' => 'nullable|numeric|min:0|max:100',
+            'observaciones' => 'nullable|string',
+            'errores' => 'nullable|string',
+            'dictamen_id' => 'nullable|exists:dictamenes,id',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            // Validar que el tanque pertenezca a la instalación
+            // Validar tanque activo
             $tanque = Tanque::find($request->tanque_id);
-            if ($tanque->instalacion_id != $request->instalacion_id) {
-                return $this->sendError('El tanque no pertenece a la instalación especificada', [], 422);
+            if (!$tanque || !$tanque->activo) {
+                return $this->error('El tanque no está activo', 422);
             }
 
-            // Validar que el medidor pertenezca a la instalación si se proporciona
+            // Validar medidor si se especifica
             if ($request->has('medidor_id') && $request->medidor_id) {
                 $medidor = Medidor::find($request->medidor_id);
-                if ($medidor->instalacion_id != $request->instalacion_id) {
-                    return $this->sendError('El medidor no pertenece a la instalación especificada', [], 422);
+                if (!$medidor || !$medidor->activo) {
+                    return $this->error('El medidor no está activo', 422);
                 }
             }
 
-            // Determinar tipo de producto para condiciones de referencia
-            $producto = Producto::find($request->producto_id);
-            $tempReferencia = $producto->tipo == 'HIDROCARBURO' ? 
-                self::TEMP_REF_HIDROCARBUROS : self::TEMP_REF_PETROLIFEROS;
-
-            // Calcular volumen corregido
-            $volumenCorregido = $this->calcularVolumenCorregido(
-                $request->volumen_final - $request->volumen_inicial,
-                $request->temperatura,
-                $tempReferencia,
-                $request->presion,
-                self::PRESION_REF,
-                $request->densidad
-            );
-
-            // Calcular factor de corrección
-            $factorCorreccion = $volumenCorregido / max(($request->volumen_final - $request->volumen_inicial), 0.0001);
-
-            // Crear el registro
             $registro = RegistroVolumetrico::create([
+                'numero_registro' => $request->numero_registro,
                 'instalacion_id' => $request->instalacion_id,
                 'tanque_id' => $request->tanque_id,
                 'medidor_id' => $request->medidor_id,
                 'producto_id' => $request->producto_id,
-                'dictamen_id' => $request->dictamen_id,
-                'cfdi_id' => $request->cfdi_id,
-                'pedimento_id' => $request->pedimento_id,
-                'tipo_registro' => $request->tipo_registro,
-                'fecha_operacion' => $request->fecha_operacion,
+                'usuario_registro_id' => $request->usuario_registro_id,
+                'usuario_valida_id' => $request->usuario_valida_id,
+                'fecha' => $request->fecha,
+                'hora_inicio' => $request->hora_inicio,
+                'hora_fin' => $request->hora_fin,
                 'volumen_inicial' => $request->volumen_inicial,
                 'volumen_final' => $request->volumen_final,
-                'volumen_recibido' => $request->volumen_recibido,
-                'volumen_entregado' => $request->volumen_entregado,
-                'volumen_corregido' => $volumenCorregido,
-                'temperatura' => $request->temperatura,
-                'presion' => $request->presion,
-                'factor_correccion' => $factorCorreccion,
+                'volumen_operacion' => $request->volumen_operacion,
+                'temperatura_inicial' => $request->temperatura_inicial,
+                'temperatura_final' => $request->temperatura_final,
+                'presion_inicial' => $request->presion_inicial,
+                'presion_final' => $request->presion_final,
                 'densidad' => $request->densidad,
-                'api_gravedad' => $request->api_gravedad,
-                'composicion' => $request->composicion,
+                'volumen_corregido' => $request->volumen_corregido,
+                'factor_correccion' => $request->factor_correccion,
+                'detalle_correccion' => $request->detalle_correccion,
+                'masa' => $request->masa,
+                'poder_calorifico' => $request->poder_calorifico,
+                'energia_total' => $request->energia_total,
+                'tipo_registro' => $request->tipo_registro,
+                'operacion' => $request->operacion,
+                'rfc_contraparte' => $request->rfc_contraparte,
+                'documento_fiscal_uuid' => $request->documento_fiscal_uuid,
+                'folio_fiscal' => $request->folio_fiscal,
+                'tipo_cfdi' => $request->tipo_cfdi,
+                'estado' => $request->estado,
+                'fecha_validacion' => $request->fecha_validacion,
+                'validaciones_realizadas' => $request->validaciones_realizadas,
+                'inconsistencias_detectadas' => $request->inconsistencias_detectadas,
+                'porcentaje_diferencia' => $request->porcentaje_diferencia,
                 'observaciones' => $request->observaciones,
-                'estado' => 'PENDIENTE',
-                'usuario_registro_id' => auth()->id(),
-                'detalle_calculo' => [
-                    'temperatura_referencia' => $tempReferencia,
-                    'presion_referencia' => self::PRESION_REF,
-                    'factor_expansion_termica' => $this->calcularFactorExpansionTermica($producto->tipo),
-                    'formula_aplicada' => 'ASTM D1250'
-                ],
-                'metadata' => $request->metadata
+                'errores' => $request->errores,
+                'dictamen_id' => $request->dictamen_id,
             ]);
 
-            // Verificar consistencia volumétrica y generar alarmas si es necesario
-            $this->verificarConsistenciaVolumetrica($registro);
+            // Verificar consistencia volumétrica
+            $this->verificarConsistencia($registro);
 
-            // Actualizar existencia del tanque
-            $this->actualizarExistenciaTanque($registro);
-
-            // Registrar en bitácora
             $this->logActivity(
                 auth()->id(),
-                'operacion_volumetrica',
-                'registro_volumen',
+                'operaciones_cotidianas',
+                'CREACION_REGISTRO_VOLUMETRICO',
+                'Registros Volumétricos',
+                "Registro volumétrico creado: {$registro->numero_registro}",
                 'registros_volumetricos',
-                "Registro volumétrico creado: {$registro->tipo_registro} - Volumen: {$volumenCorregido}",
-                'registros_volumetricos',
-                $registro->id,
-                null,
-                $registro->toArray()
+                $registro->id
             );
 
             DB::commit();
 
-            return $this->sendResponse($registro->load(['instalacion', 'tanque', 'producto']), 
+            return $this->success($registro->load(['instalacion', 'tanque', 'producto', 'usuarioRegistro']), 
                 'Registro volumétrico creado exitosamente', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al crear registro volumétrico', [$e->getMessage()], 500);
+            return $this->error('Error al crear registro volumétrico: ' . $e->getMessage(), 500);
         }
     }
 
@@ -230,77 +239,16 @@ class RegistroVolumetricoController extends BaseController
             'tanque',
             'medidor',
             'producto',
-            'dictamen',
-            'cfdi',
-            'pedimento',
             'usuarioRegistro',
             'usuarioValida',
-            'alarmas'
+            'dictamen'
         ])->find($id);
 
         if (!$registro) {
-            return $this->sendError('Registro volumétrico no encontrado');
+            return $this->error('Registro volumétrico no encontrado', 404);
         }
 
-        return $this->sendResponse($registro, 'Registro volumétrico obtenido exitosamente');
-    }
-
-    /**
-     * Actualizar registro volumétrico (solo si está en estado PENDIENTE)
-     */
-    public function update(Request $request, $id)
-    {
-        $registro = RegistroVolumetrico::find($id);
-
-        if (!$registro) {
-            return $this->sendError('Registro volumétrico no encontrado');
-        }
-
-        if ($registro->estado != 'PENDIENTE') {
-            return $this->sendError('No se puede modificar un registro que no está en estado PENDIENTE', [], 403);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'dictamen_id' => 'nullable|exists:dictamenes,id',
-            'cfdi_id' => 'nullable|exists:cfdis,id',
-            'pedimento_id' => 'nullable|exists:pedimentos,id',
-            'observaciones' => 'nullable|string|max:1000',
-            'metadata' => 'nullable|array'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            $datosAnteriores = $registro->toArray();
-            
-            $registro->update($request->only([
-                'dictamen_id', 'cfdi_id', 'pedimento_id', 'observaciones', 'metadata'
-            ]));
-
-            $this->logActivity(
-                auth()->id(),
-                'operacion_volumetrica',
-                'actualizacion_registro',
-                'registros_volumetricos',
-                "Registro volumétrico actualizado ID: {$id}",
-                'registros_volumetricos',
-                $registro->id,
-                $datosAnteriores,
-                $registro->toArray()
-            );
-
-            DB::commit();
-
-            return $this->sendResponse($registro, 'Registro volumétrico actualizado exitosamente');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return $this->sendError('Error al actualizar registro volumétrico', [$e->getMessage()], 500);
-        }
+        return $this->success($registro, 'Registro volumétrico obtenido exitosamente');
     }
 
     /**
@@ -311,117 +259,59 @@ class RegistroVolumetricoController extends BaseController
         $registro = RegistroVolumetrico::find($id);
 
         if (!$registro) {
-            return $this->sendError('Registro volumétrico no encontrado');
+            return $this->error('Registro volumétrico no encontrado', 404);
         }
 
-        if ($registro->estado != 'PENDIENTE') {
-            return $this->sendError('El registro ya ha sido validado', [], 403);
+        if ($registro->estado == 'VALIDADO') {
+            return $this->error('El registro ya está validado', 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'observaciones_validacion' => 'nullable|string|max:500'
+            'observaciones_validacion' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
+
+            $datosAnteriores = $registro->toArray();
 
             $registro->estado = 'VALIDADO';
             $registro->usuario_valida_id = auth()->id();
             $registro->fecha_validacion = now();
-            
-            if ($request->has('observaciones_validacion')) {
-                $metadata = $registro->metadata ?? [];
-                $metadata['observaciones_validacion'] = $request->observaciones_validacion;
-                $registro->metadata = $metadata;
-            }
-            
-            $registro->save();
 
-            $this->logActivity(
-                auth()->id(),
-                'operacion_volumetrica',
-                'validacion_registro',
-                'registros_volumetricos',
-                "Registro volumétrico validado ID: {$id}",
-                'registros_volumetricos',
-                $registro->id
-            );
-
-            DB::commit();
-
-            return $this->sendResponse($registro, 'Registro volumétrico validado exitosamente');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return $this->sendError('Error al validar registro volumétrico', [$e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Marcar registro con alarma
-     */
-    public function marcarConAlarma(Request $request, $id)
-    {
-        $registro = RegistroVolumetrico::find($id);
-
-        if (!$registro) {
-            return $this->sendError('Registro volumétrico no encontrado');
-        }
-
-        $validator = Validator::make($request->all(), [
-            'alarma_id' => 'required|exists:alarmas,id',
-            'observaciones' => 'nullable|string|max:500'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            $alarma = Alarma::find($request->alarma_id);
-            
-            if ($alarma->registro_volumetrico_id && $alarma->registro_volumetrico_id != $id) {
-                return $this->sendError('La alarma ya está asociada a otro registro', [], 422);
-            }
-
-            $alarma->registro_volumetrico_id = $id;
-            $alarma->save();
-
-            $registro->estado = 'CON_ALARMA';
-            
-            $metadata = $registro->metadata ?? [];
-            $metadata['alarma_asociada'] = [
-                'id' => $alarma->id,
+            $validaciones = $registro->validaciones_realizadas ?? [];
+            $validaciones[] = [
                 'fecha' => now()->toDateTimeString(),
-                'observaciones' => $request->observaciones
+                'usuario_id' => auth()->id(),
+                'observaciones' => $request->observaciones_validacion,
             ];
-            $registro->metadata = $metadata;
-            
+            $registro->validaciones_realizadas = $validaciones;
+
             $registro->save();
 
             $this->logActivity(
                 auth()->id(),
-                'operacion_volumetrica',
-                'asociar_alarma',
+                'operaciones_cotidianas',
+                'VALIDACION_REGISTRO_VOLUMETRICO',
+                'Registros Volumétricos',
+                "Registro volumétrico validado: {$registro->numero_registro}",
                 'registros_volumetricos',
-                "Alarma {$request->alarma_id} asociada al registro {$id}",
-                'registros_volumetricos',
-                $registro->id
+                $registro->id,
+                $datosAnteriores,
+                $registro->toArray()
             );
 
             DB::commit();
 
-            return $this->sendResponse($registro, 'Alarma asociada exitosamente');
+            return $this->success($registro, 'Registro volumétrico validado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al asociar alarma', [$e->getMessage()], 500);
+            return $this->error('Error al validar registro volumétrico: ' . $e->getMessage(), 500);
         }
     }
 
@@ -433,44 +323,45 @@ class RegistroVolumetricoController extends BaseController
         $registro = RegistroVolumetrico::find($id);
 
         if (!$registro) {
-            return $this->sendError('Registro volumétrico no encontrado');
+            return $this->error('Registro volumétrico no encontrado', 404);
         }
 
         if ($registro->estado == 'CANCELADO') {
-            return $this->sendError('El registro ya está cancelado', [], 403);
+            return $this->error('El registro ya está cancelado', 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'motivo_cancelacion' => 'required|string|max:500'
+            'motivo_cancelacion' => 'required|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
             $datosAnteriores = $registro->toArray();
-            
+
             $registro->estado = 'CANCELADO';
             
-            $metadata = $registro->metadata ?? [];
-            $metadata['cancelacion'] = [
+            $inconsistencias = $registro->inconsistencias_detectadas ?? [];
+            $inconsistencias[] = [
+                'tipo' => 'CANCELACION',
                 'fecha' => now()->toDateTimeString(),
                 'usuario_id' => auth()->id(),
-                'motivo' => $request->motivo_cancelacion
+                'descripcion' => $request->motivo_cancelacion,
             ];
-            $registro->metadata = $metadata;
+            $registro->inconsistencias_detectadas = $inconsistencias;
             
             $registro->save();
 
             $this->logActivity(
                 auth()->id(),
-                'operacion_volumetrica',
-                'cancelacion_registro',
-                'registros_volumetricos',
-                "Registro volumétrico cancelado ID: {$id} - Motivo: {$request->motivo_cancelacion}",
+                'operaciones_cotidianas',
+                'CANCELACION_REGISTRO_VOLUMETRICO',
+                'Registros Volumétricos',
+                "Registro volumétrico cancelado: {$registro->numero_registro}",
                 'registros_volumetricos',
                 $registro->id,
                 $datosAnteriores,
@@ -479,11 +370,11 @@ class RegistroVolumetricoController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($registro, 'Registro volumétrico cancelado exitosamente');
+            return $this->success($registro, 'Registro volumétrico cancelado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al cancelar registro volumétrico', [$e->getMessage()], 500);
+            return $this->error('Error al cancelar registro volumétrico: ' . $e->getMessage(), 500);
         }
     }
 
@@ -494,47 +385,44 @@ class RegistroVolumetricoController extends BaseController
     {
         $validator = Validator::make($request->all(), [
             'instalacion_id' => 'required|exists:instalaciones,id',
-            'fecha' => 'required|date_format:Y-m-d'
+            'fecha' => 'required|date',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
-        $fecha = Carbon::parse($request->fecha);
-        
         $registros = RegistroVolumetrico::where('instalacion_id', $request->instalacion_id)
-            ->whereDate('fecha_operacion', $fecha)
-            ->with(['producto', 'tanque'])
+            ->whereDate('fecha', $request->fecha)
+            ->with('producto')
             ->get();
 
         $resumen = [
-            'fecha' => $fecha->format('Y-m-d'),
+            'fecha' => $request->fecha,
             'instalacion_id' => $request->instalacion_id,
             'total_registros' => $registros->count(),
-            'por_tipo' => $registros->groupBy('tipo_registro')
+            'volumen_total' => $registros->sum('volumen_corregido'),
+            'por_operacion' => $registros->groupBy('operacion')
                 ->map(function ($items) {
                     return [
                         'cantidad' => $items->count(),
-                        'volumen_total' => $items->sum('volumen_corregido')
+                        'volumen' => $items->sum('volumen_corregido'),
                     ];
                 }),
             'por_producto' => $registros->groupBy('producto.nombre')
                 ->map(function ($items) {
                     return [
                         'cantidad' => $items->count(),
-                        'volumen_total' => $items->sum('volumen_corregido')
+                        'volumen' => $items->sum('volumen_corregido'),
                     ];
                 }),
             'por_estado' => $registros->groupBy('estado')
                 ->map(function ($items) {
                     return $items->count();
                 }),
-            'volumen_total' => $registros->sum('volumen_corregido'),
-            'registros_con_alarma' => $registros->where('estado', 'CON_ALARMA')->count()
         ];
 
-        return $this->sendResponse($resumen, 'Resumen diario obtenido exitosamente');
+        return $this->success($resumen, 'Resumen diario obtenido exitosamente');
     }
 
     /**
@@ -544,19 +432,19 @@ class RegistroVolumetricoController extends BaseController
     {
         $validator = Validator::make($request->all(), [
             'instalacion_id' => 'required|exists:instalaciones,id',
-            'anio' => 'required|integer|min:2020|max:2100',
-            'mes' => 'required|integer|min:1|max:12'
+            'anio' => 'required|integer|min:2020',
+            'mes' => 'required|integer|min:1|max:12',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         $fechaInicio = Carbon::createFromDate($request->anio, $request->mes, 1)->startOfMonth();
         $fechaFin = $fechaInicio->copy()->endOfMonth();
 
         $registros = RegistroVolumetrico::where('instalacion_id', $request->instalacion_id)
-            ->whereBetween('fecha_operacion', [$fechaInicio, $fechaFin])
+            ->whereBetween('fecha', [$fechaInicio, $fechaFin])
             ->with('producto')
             ->get();
 
@@ -564,16 +452,18 @@ class RegistroVolumetricoController extends BaseController
             'periodo' => [
                 'anio' => $request->anio,
                 'mes' => $request->mes,
-                'fecha_inicio' => $fechaInicio->format('Y-m-d'),
-                'fecha_fin' => $fechaFin->format('Y-m-d')
+                'inicio' => $fechaInicio->toDateString(),
+                'fin' => $fechaFin->toDateString(),
             ],
             'instalacion_id' => $request->instalacion_id,
-            'resumen_general' => [
+            'resumen' => [
                 'total_registros' => $registros->count(),
                 'volumen_total' => $registros->sum('volumen_corregido'),
-                'promedio_diario' => $registros->sum('volumen_corregido') / $fechaInicio->daysInMonth,
+                'promedio_diario' => $fechaInicio->daysInMonth > 0 
+                    ? $registros->sum('volumen_corregido') / $fechaInicio->daysInMonth
+                    : 0,
                 'registros_validados' => $registros->where('estado', 'VALIDADO')->count(),
-                'registros_con_alarma' => $registros->where('estado', 'CON_ALARMA')->count()
+                'registros_con_alarma' => $registros->where('estado', 'CON_ALARMA')->count(),
             ],
             'por_producto' => $registros->groupBy('producto_id')
                 ->map(function ($items) {
@@ -583,161 +473,105 @@ class RegistroVolumetricoController extends BaseController
                         'producto_nombre' => $producto->nombre,
                         'cantidad' => $items->count(),
                         'volumen_total' => $items->sum('volumen_corregido'),
-                        'recepciones' => $items->where('tipo_registro', 'RECEPCION')->sum('volumen_corregido'),
-                        'entregas' => $items->where('tipo_registro', 'ENTREGA')->sum('volumen_corregido')
+                        'recepciones' => $items->where('operacion', 'recepcion')->sum('volumen_corregido'),
+                        'entregas' => $items->where('operacion', 'entrega')->sum('volumen_corregido'),
+                        'ventas' => $items->where('operacion', 'venta')->sum('volumen_corregido'),
                     ];
                 })->values(),
-            'tendencia_diaria' => $registros->groupBy(function ($item) {
-                    return Carbon::parse($item->fecha_operacion)->format('Y-m-d');
-                })
+            'tendencia_diaria' => $registros->groupBy('fecha')
                 ->map(function ($items, $fecha) {
                     return [
                         'fecha' => $fecha,
-                        'total_registros' => $items->count(),
-                        'volumen' => $items->sum('volumen_corregido')
+                        'registros' => $items->count(),
+                        'volumen' => $items->sum('volumen_corregido'),
                     ];
-                })->values()
+                })->values(),
         ];
 
-        return $this->sendResponse($estadisticas, 'Estadísticas mensuales obtenidas exitosamente');
+        return $this->success($estadisticas, 'Estadísticas mensuales obtenidas exitosamente');
     }
 
     /**
-     * Métodos privados de cálculo
+     * Asociar dictamen
      */
-    private function calcularVolumenCorregido($volumen, $tempActual, $tempRef, $presActual, $presRef, $densidad = null)
+    public function asociarDictamen(Request $request, $id)
     {
-        if ($volumen <= 0) {
-            return 0;
+        $registro = RegistroVolumetrico::find($id);
+
+        if (!$registro) {
+            return $this->error('Registro volumétrico no encontrado', 404);
         }
 
-        // Factor de corrección por temperatura (ASTM D1250)
-        $coeficienteExpansion = $this->calcularCoeficienteExpansion($densidad);
-        $factorTemperatura = 1 + ($coeficienteExpansion * ($tempRef - $tempActual));
+        $validator = Validator::make($request->all(), [
+            'dictamen_id' => 'required|exists:dictamenes,id',
+        ]);
 
-        // Factor de corrección por presión (compresibilidad)
-        $factorPresion = 1 + (($presRef - $presActual) * 0.00001); // Aproximación simple
-
-        return $volumen * $factorTemperatura * $factorPresion;
-    }
-
-    private function calcularCoeficienteExpansion($densidad)
-    {
-        if (!$densidad) {
-            return 0.0006; // Valor por defecto para petrolíferos
+        if ($validator->fails()) {
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
-        // Aproximación basada en API MPMS Chapter 11
-        if ($densidad < 0.85) {
-            return 0.0008; // Productos ligeros
-        } elseif ($densidad < 0.95) {
-            return 0.0006; // Productos medios
-        } else {
-            return 0.0004; // Productos pesados
+        try {
+            DB::beginTransaction();
+
+            $datosAnteriores = $registro->toArray();
+            $registro->dictamen_id = $request->dictamen_id;
+            $registro->save();
+
+            $this->logActivity(
+                auth()->id(),
+                'operaciones_cotidianas',
+                'ASOCIACION_DICTAMEN',
+                'Registros Volumétricos',
+                "Dictamen asociado a registro {$registro->numero_registro}",
+                'registros_volumetricos',
+                $registro->id,
+                $datosAnteriores,
+                $registro->toArray()
+            );
+
+            DB::commit();
+
+            return $this->success($registro->load('dictamen'), 'Dictamen asociado exitosamente');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->error('Error al asociar dictamen: ' . $e->getMessage(), 500);
         }
     }
 
-    private function calcularFactorExpansionTermica($tipoProducto)
+    /**
+     * Métodos privados
+     */
+    private function verificarConsistencia($registro)
     {
-        return $tipoProducto == 'HIDROCARBURO' ? 0.0005 : 0.0006;
-    }
-
-    private function verificarConsistenciaVolumetrica($registro)
-    {
-        $instalacion = Instalacion::find($registro->instalacion_id);
-        $umbrales = $instalacion->umbrales_alarma ?? [
-            'diferencia_maxima_liquidos' => self::UMBRAL_DIF_LIQUIDOS,
-            'diferencia_maxima_gaseosos' => self::UMBRAL_DIF_GASEOSOS
-        ];
-
-        // Obtener el producto para determinar si es líquido o gaseoso
-        $producto = Producto::find($registro->producto_id);
-        $esGaseoso = in_array($producto->tipo, ['GAS_NATURAL', 'GAS_LP']);
+        // Calcular volumen esperado basado en operaciones
+        $volumenEsperado = $registro->volumen_final - $registro->volumen_inicial;
         
-        $umbralMaximo = $esGaseoso ? 
-            ($umbrales['diferencia_maxima_gaseosos'] ?? self::UMBRAL_DIF_GASEOSOS) : 
-            ($umbrales['diferencia_maxima_liquidos'] ?? self::UMBRAL_DIF_LIQUIDOS);
-
-        // Calcular diferencia esperada vs real
-        $diferenciaCalculada = abs(
-            ($registro->volumen_final - $registro->volumen_inicial) - 
-            ($registro->volumen_recibido - $registro->volumen_entregado)
-        );
-
-        if ($registro->volumen_corregido > 0) {
-            $porcentajeDiferencia = ($diferenciaCalculada / $registro->volumen_corregido) * 100;
-
-            if ($porcentajeDiferencia > $umbralMaximo) {
-                // Crear alarma por inconsistencia volumétrica
-                $alarma = Alarma::create([
-                    'instalacion_id' => $registro->instalacion_id,
-                    'registro_volumetrico_id' => $registro->id,
-                    'tipo_alarma' => 'INCONSISTENCIA_VOLUMETRICA',
-                    'gravedad' => $porcentajeDiferencia > ($umbralMaximo * 2) ? 'CRITICA' : 'ALTA',
-                    'descripcion' => "Diferencia volumétrica del {$porcentajeDiferencia}% supera el umbral permitido ({$umbralMaximo}%)",
-                    'detalle' => [
-                        'diferencia_calculada' => $diferenciaCalculada,
-                        'porcentaje_diferencia' => $porcentajeDiferencia,
-                        'umbral_maximo' => $umbralMaximo,
-                        'volumen_corregido' => $registro->volumen_corregido,
-                        'volumen_inicial' => $registro->volumen_inicial,
-                        'volumen_final' => $registro->volumen_final,
-                        'volumen_recibido' => $registro->volumen_recibido,
-                        'volumen_entregado' => $registro->volumen_entregado
-                    ],
-                    'diagnostico_automatico' => 'Posible error en medición o fuga en el sistema',
-                    'recomendaciones' => 'Verificar calibración de medidores y realizar prueba de integridad del tanque',
-                    'fecha_alarma' => now(),
-                    'estado' => 'ACTIVA'
-                ]);
-
-                $registro->estado = 'CON_ALARMA';
-                $registro->save();
-
-                $this->logActivity(
-                    null,
-                    'sistema',
-                    'alarma_generada',
-                    'alarmas',
-                    "Alarma por inconsistencia volumétrica generada: {$porcentajeDiferencia}%",
-                    'alarmas',
-                    $alarma->id
-                );
+        if ($registro->volumen_operacion > 0) {
+            $diferencia = abs($volumenEsperado - $registro->volumen_operacion);
+            $porcentajeDiferencia = ($diferencia / $registro->volumen_operacion) * 100;
+            
+            $registro->porcentaje_diferencia = $porcentajeDiferencia;
+            
+            // Si la diferencia es mayor al 5%, marcar como inconsistente
+            if ($porcentajeDiferencia > 5) {
+                $inconsistencias = $registro->inconsistencias_detectadas ?? [];
+                $inconsistencias[] = [
+                    'tipo' => 'DIFERENCIA_VOLUMEN',
+                    'fecha' => now()->toDateTimeString(),
+                    'descripcion' => "Diferencia del {$porcentajeDiferencia}% entre volumen operado y variación de inventario",
+                    'volumen_esperado' => $volumenEsperado,
+                    'volumen_operacion' => $registro->volumen_operacion,
+                    'diferencia' => $diferencia,
+                ];
+                $registro->inconsistencias_detectadas = $inconsistencias;
+                
+                if ($registro->estado != 'CANCELADO') {
+                    $registro->estado = 'CON_ALARMA';
+                }
             }
-        }
-    }
-
-    private function actualizarExistenciaTanque($registro)
-    {
-        $existencia = Existencia::firstOrCreate(
-            [
-                'tanque_id' => $registro->tanque_id,
-                'producto_id' => $registro->producto_id,
-                'fecha' => $registro->fecha_operacion->toDateString()
-            ],
-            [
-                'volumen_inicial' => $registro->volumen_inicial,
-                'volumen_final' => $registro->volumen_final,
-                'volumen_recibido' => 0,
-                'volumen_entregado' => 0,
-                'volumen_corregido' => $registro->volumen_final,
-                'usuario_registro_id' => auth()->id()
-            ]
-        );
-
-        if ($existencia->wasRecentlyCreated === false) {
-            // Actualizar existencia existente
-            $volumenRecibido = $existencia->volumen_recibido + 
-                ($registro->tipo_registro == 'RECEPCION' ? $registro->volumen_corregido : 0);
-            $volumenEntregado = $existencia->volumen_entregado + 
-                ($registro->tipo_registro == 'ENTREGA' ? $registro->volumen_corregido : 0);
-
-            $existencia->update([
-                'volumen_final' => $registro->volumen_final,
-                'volumen_recibido' => $volumenRecibido,
-                'volumen_entregado' => $volumenEntregado,
-                'volumen_corregido' => $registro->volumen_final
-            ]);
+            
+            $registro->save();
         }
     }
 }

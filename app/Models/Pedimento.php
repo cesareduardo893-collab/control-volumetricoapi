@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Pedimento extends Model
 {
@@ -36,13 +37,28 @@ class Pedimento extends Model
     ];
 
     protected $casts = [
-        'volumen'           => 'decimal:4',
-        'valor_comercial'   => 'decimal:4',
-        'fecha_pedimento'   => 'date',
-        'fecha_arribo'      => 'date',
-        'fecha_pago'        => 'date',
-        'metadatos_aduana'  => 'array',
+        'volumen' => 'decimal:4',
+        'valor_comercial' => 'decimal:4',
+        'fecha_pedimento' => 'date',
+        'fecha_arribo' => 'date',
+        'fecha_pago' => 'date',
+        'metadatos_aduana' => 'array',
     ];
+
+    public const ESTADO_ACTIVO = 'ACTIVO';
+    public const ESTADO_UTILIZADO = 'UTILIZADO';
+    public const ESTADO_CANCELADO = 'CANCELADO';
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->numero_pedimento)) {
+                $model->numero_pedimento = 'PED-' . Str::uuid();
+            }
+        });
+    }
 
     public function contribuyente()
     {

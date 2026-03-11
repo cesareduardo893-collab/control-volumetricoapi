@@ -48,28 +48,38 @@ class Producto extends Model
     ];
 
     protected $casts = [
-        'densidad_api'               => 'decimal:2',
-        'contenido_azufre'           => 'decimal:2',
-        'poder_calorifico'            => 'decimal:4',
-        'composicion_tipica'          => 'array',
-        'especificaciones_tecnicas'   => 'array',
-        'octanaje_ron'                => 'decimal:2',
-        'octanaje_mon'                => 'decimal:2',
-        'indice_octano'               => 'decimal:2',
-        'contiene_bioetanol'          => 'boolean',
-        'porcentaje_bioetanol'        => 'decimal:2',
-        'contiene_biodiesel'          => 'boolean',
-        'porcentaje_biodiesel'        => 'decimal:2',
-        'contiene_bioturbosina'       => 'boolean',
-        'porcentaje_bioturbosina'     => 'decimal:2',
-        'fame'                        => 'decimal:2',
-        'porcentaje_propano'          => 'decimal:2',
-        'porcentaje_butano'           => 'decimal:2',
-        'propano_normalizado'         => 'decimal:2',
-        'butano_normalizado'          => 'decimal:2',
-        'indice_wobbe'                => 'decimal:4',
-        'activo'                      => 'boolean',
+        'densidad_api' => 'decimal:2',
+        'contenido_azufre' => 'decimal:2',
+        'poder_calorifico' => 'decimal:4',
+        'composicion_tipica' => 'array',
+        'especificaciones_tecnicas' => 'array',
+        'octanaje_ron' => 'decimal:2',
+        'octanaje_mon' => 'decimal:2',
+        'indice_octano' => 'decimal:2',
+        'contiene_bioetanol' => 'boolean',
+        'porcentaje_bioetanol' => 'decimal:2',
+        'contiene_biodiesel' => 'boolean',
+        'porcentaje_biodiesel' => 'decimal:2',
+        'contiene_bioturbosina' => 'boolean',
+        'porcentaje_bioturbosina' => 'decimal:2',
+        'fame' => 'decimal:2',
+        'porcentaje_propano' => 'decimal:2',
+        'porcentaje_butano' => 'decimal:2',
+        'propano_normalizado' => 'decimal:2',
+        'butano_normalizado' => 'decimal:2',
+        'indice_wobbe' => 'decimal:4',
+        'activo' => 'boolean',
     ];
+
+    public const TIPO_HIDROCARBURO_PETROLEO = 'petroleo';
+    public const TIPO_HIDROCARBURO_GAS_NATURAL = 'gas_natural';
+    public const TIPO_HIDROCARBURO_CONDENSADOS = 'condensados';
+    public const TIPO_HIDROCARBURO_GASOLINA = 'gasolina';
+    public const TIPO_HIDROCARBURO_DIESEL = 'diesel';
+    public const TIPO_HIDROCARBURO_TURBOSINA = 'turbosina';
+    public const TIPO_HIDROCARBURO_GAS_LP = 'gas_lp';
+    public const TIPO_HIDROCARBURO_PROPANO = 'propano';
+    public const TIPO_HIDROCARBURO_OTRO = 'otro';
 
     public function tanques()
     {

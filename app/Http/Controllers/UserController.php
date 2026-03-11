@@ -3,14 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Models\Contribuyente;
+use App\Models\Bitacora;
 use App\Models\Role;
 use App\Models\Permission;
+use App\Models\HistorialConexion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Password;
+use Carbon\Carbon;
 
 class UserController extends BaseController
 {
@@ -19,28 +21,29 @@ class UserController extends BaseController
      */
     public function index(Request $request)
     {
-        $query = User::with(['contribuyente', 'roles.permissions']);
+        $query = User::with(['roles'])->whereNull('deleted_at');
 
         // Filtros
-        if ($request->has('contribuyente_id')) {
-            $query->where('contribuyente_id', $request->contribuyente_id);
+        if ($request->has('identificacion')) {
+            $query->where('identificacion', 'LIKE', "%{$request->identificacion}%");
         }
 
-        if ($request->has('name')) {
-            $query->where('name', 'LIKE', "%{$request->name}%");
+        if ($request->has('nombres')) {
+            $query->where('nombres', 'LIKE', "%{$request->nombres}%");
+        }
+
+        if ($request->has('apellidos')) {
+            $query->where('apellidos', 'LIKE', "%{$request->apellidos}%");
         }
 
         if ($request->has('email')) {
             $query->where('email', 'LIKE', "%{$request->email}%");
         }
 
-        if ($request->has('rfc')) {
-            $query->where('rfc', 'LIKE', "%{$request->rfc}%");
-        }
-
-        if ($request->has('role')) {
+        if ($request->has('role_id')) {
             $query->whereHas('roles', function($q) use ($request) {
-                $q->where('name', $request->role);
+                $q->where('role_id', $request->role_id)
+                  ->whereNull('fecha_revocacion');
             });
         }
 
@@ -48,14 +51,15 @@ class UserController extends BaseController
             $query->where('activo', $request->boolean('activo'));
         }
 
-        if ($request->has('ultimo_acceso_desde')) {
-            $query->where('ultimo_acceso', '>=', Carbon::parse($request->ultimo_acceso_desde));
+        if ($request->has('bloqueados')) {
+            $query->whereNotNull('locked_until')
+                  ->where('locked_until', '>', Carbon::now());
         }
 
-        $usuarios = $query->orderBy('name')
+        $usuarios = $query->orderBy('nombres')
             ->paginate($request->get('per_page', 15));
 
-        return $this->sendResponse($usuarios, 'Usuarios obtenidos exitosamente');
+        return $this->success($usuarios, 'Usuarios obtenidos exitosamente');
     }
 
     /**
@@ -64,116 +68,69 @@ class UserController extends BaseController
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'contribuyente_id' => 'required|exists:contribuyentes,id',
-            'name' => 'required|string|max:255',
+            'identificacion' => 'required|string|max:18|unique:users,identificacion',
+            'nombres' => 'required|string|max:255',
+            'apellidos' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
-            'rfc' => 'required|string|size:13|unique:users,rfc',
-            'curp' => 'nullable|string|size:18|unique:users,curp',
+            'telefono' => 'nullable|string|max:20',
+            'direccion' => 'nullable|string|max:255',
             'password' => ['required', 'confirmed', Password::min(8)
                 ->mixedCase()
                 ->numbers()
-                ->symbols()
-                ->uncompromised()],
-            'puesto' => 'nullable|string|max:100',
-            'departamento' => 'nullable|string|max:100',
-            'telefono' => 'nullable|string|max:20',
-            'telefono_movil' => 'nullable|string|max:20',
-            'firma_electronica' => 'nullable|string|max:50',
-            'certificado_digital' => 'nullable|file|mimes:cer,crt,pem|max:5120',
-            'llave_privada' => 'nullable|file|mimes:key,pem|max:5120',
-            'password_firma' => 'nullable|string',
+                ->symbols()],
             'roles' => 'required|array|min:1',
             'roles.*' => 'exists:roles,id',
-            'permisos_especiales' => 'nullable|array',
-            'permisos_especiales.*' => 'exists:permissions,id',
-            'notificaciones' => 'nullable|array',
-            'notificaciones.email' => 'boolean',
-            'notificaciones.sms' => 'boolean',
-            'notificaciones.whatsapp' => 'boolean',
-            'notificaciones.push' => 'boolean',
-            'notificaciones.eventos' => 'nullable|array',
-            'limites' => 'nullable|array',
-            'limites.max_instalaciones' => 'nullable|integer|min:1',
-            'limites.operaciones_diarias' => 'nullable|integer|min:1',
-            'preferencias' => 'nullable|array',
-            'preferencias.idioma' => 'nullable|in:es,en',
-            'preferencias.zona_horaria' => 'nullable|timezone',
-            'preferencias.formato_fecha' => 'nullable|string',
-            'preferencias.tema' => 'nullable|in:light,dark,auto',
             'activo' => 'boolean',
-            'metadata' => 'nullable|array'
+            'force_password_change' => 'boolean',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            // Procesar archivos de firma electrónica
-            $rutaCertificado = null;
-            $rutaLlave = null;
-
-            if ($request->hasFile('certificado_digital')) {
-                $rutaCertificado = $request->file('certificado_digital')
-                    ->store("usuarios/certificados/{$request->rfc}", 'private');
-            }
-
-            if ($request->hasFile('llave_privada')) {
-                $rutaLlave = $request->file('llave_privada')
-                    ->store("usuarios/llaves/{$request->rfc}", 'private');
-            }
-
-            // Crear usuario
-            $usuario = User::create([
-                'contribuyente_id' => $request->contribuyente_id,
-                'name' => $request->name,
+            $user = User::create([
+                'identificacion' => $request->identificacion,
+                'nombres' => $request->nombres,
+                'apellidos' => $request->apellidos,
                 'email' => $request->email,
-                'rfc' => $request->rfc,
-                'curp' => $request->curp,
-                'password' => Hash::make($request->password),
-                'puesto' => $request->puesto,
-                'departamento' => $request->departamento,
                 'telefono' => $request->telefono,
-                'telefono_movil' => $request->telefono_movil,
-                'firma_electronica' => $request->firma_electronica,
-                'certificado_digital' => $rutaCertificado,
-                'llave_privada' => $rutaLlave,
-                'password_firma' => $request->password_firma ? Hash::make($request->password_firma) : null,
-                'notificaciones' => $request->notificaciones,
-                'limites' => $request->limites,
-                'preferencias' => $request->preferencias,
+                'direccion' => $request->direccion,
+                'password' => Hash::make($request->password),
                 'activo' => $request->boolean('activo', true),
-                'metadata' => $request->metadata
+                'force_password_change' => $request->boolean('force_password_change', true),
+                'password_expires_at' => Carbon::now()->addDays(90),
+                'last_password_change' => Carbon::now(),
             ]);
 
             // Asignar roles
-            $usuario->roles()->attach($request->roles);
-
-            // Asignar permisos especiales
-            if ($request->has('permisos_especiales')) {
-                $usuario->permissions()->attach($request->permisos_especiales);
+            foreach ($request->roles as $roleId) {
+                $user->roles()->attach($roleId, [
+                    'asignado_por' => auth()->id(),
+                    'fecha_asignacion' => now(),
+                    'activo' => true
+                ]);
             }
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
-                'creacion_usuario',
+                'administracion_sistema',
+                'CREACION_USUARIO',
+                'Administración',
+                "Usuario creado: {$user->email}",
                 'users',
-                "Usuario creado: {$usuario->email} - RFC: {$usuario->rfc}",
-                'users',
-                $usuario->id
+                $user->id
             );
 
             DB::commit();
 
-            return $this->sendResponse($usuario->load(['contribuyente', 'roles', 'permissions']), 
-                'Usuario creado exitosamente', 201);
+            return $this->success($user->load('roles'), 'Usuario creado exitosamente', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al crear usuario', [$e->getMessage()], 500);
+            return $this->error('Error al crear usuario: ' . $e->getMessage(), 500);
         }
     }
 
@@ -182,23 +139,26 @@ class UserController extends BaseController
      */
     public function show($id)
     {
-        $usuario = User::with([
-            'contribuyente',
-            'roles.permissions',
-            'permissions',
-            'sesiones' => function($q) {
-                $q->latest()->limit(10);
-            },
-            'actividades' => function($q) {
-                $q->latest()->limit(20);
+        $user = User::with([
+            'roles' => function($q) {
+                $q->withPivot('fecha_asignacion', 'asignado_por')
+                  ->whereNull('fecha_revocacion');
             }
         ])->find($id);
 
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
+        if (!$user) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
-        return $this->sendResponse($usuario, 'Usuario obtenido exitosamente');
+        // Historial de conexiones
+        $historialConexiones = HistorialConexion::where('user_id', $id)
+            ->orderBy('fecha_hora', 'desc')
+            ->limit(20)
+            ->get();
+
+        $user->historial_conexiones = $historialConexiones;
+
+        return $this->success($user, 'Usuario obtenido exitosamente');
     }
 
     /**
@@ -206,97 +166,74 @@ class UserController extends BaseController
      */
     public function update(Request $request, $id)
     {
-        $usuario = User::find($id);
+        $user = User::find($id);
 
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
+        if (!$user) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|string|max:255',
+            'identificacion' => "sometimes|string|max:18|unique:users,identificacion,{$id}",
+            'nombres' => 'sometimes|string|max:255',
+            'apellidos' => 'sometimes|string|max:255',
             'email' => "sometimes|email|max:255|unique:users,email,{$id}",
-            'rfc' => "sometimes|string|size:13|unique:users,rfc,{$id}",
-            'curp' => "nullable|string|size:18|unique:users,curp,{$id}",
-            'puesto' => 'nullable|string|max:100',
-            'departamento' => 'nullable|string|max:100',
             'telefono' => 'nullable|string|max:20',
-            'telefono_movil' => 'nullable|string|max:20',
-            'firma_electronica' => 'nullable|string|max:50',
-            'certificado_digital' => 'nullable|file|mimes:cer,crt,pem|max:5120',
-            'llave_privada' => 'nullable|file|mimes:key,pem|max:5120',
-            'password_firma' => 'nullable|string',
+            'direccion' => 'nullable|string|max:255',
+            'activo' => 'sometimes|boolean',
             'roles' => 'sometimes|array',
             'roles.*' => 'exists:roles,id',
-            'permisos_especiales' => 'nullable|array',
-            'permisos_especiales.*' => 'exists:permissions,id',
-            'notificaciones' => 'nullable|array',
-            'limites' => 'nullable|array',
-            'preferencias' => 'nullable|array',
-            'activo' => 'sometimes|boolean',
-            'metadata' => 'nullable|array'
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            $datosAnteriores = $usuario->toArray();
-
-            // Procesar archivos de firma electrónica
-            if ($request->hasFile('certificado_digital')) {
-                $rutaCertificado = $request->file('certificado_digital')
-                    ->store("usuarios/certificados/{$usuario->rfc}", 'private');
-                $usuario->certificado_digital = $rutaCertificado;
-            }
-
-            if ($request->hasFile('llave_privada')) {
-                $rutaLlave = $request->file('llave_privada')
-                    ->store("usuarios/llaves/{$usuario->rfc}", 'private');
-                $usuario->llave_privada = $rutaLlave;
-            }
-
-            // Actualizar campos
-            $usuario->fill($request->except(['password', 'password_firma']));
-
-            if ($request->has('password_firma')) {
-                $usuario->password_firma = Hash::make($request->password_firma);
-            }
-
-            $usuario->save();
+            $datosAnteriores = $user->toArray();
+            $user->update($request->except('password'));
 
             // Actualizar roles
             if ($request->has('roles')) {
-                $usuario->roles()->sync($request->roles);
-            }
+                // Revocar roles actuales
+                DB::table('user_role')
+                    ->where('user_id', $user->id)
+                    ->whereNull('fecha_revocacion')
+                    ->update([
+                        'fecha_revocacion' => now(),
+                        'activo' => false
+                    ]);
 
-            // Actualizar permisos especiales
-            if ($request->has('permisos_especiales')) {
-                $usuario->permissions()->sync($request->permisos_especiales);
+                // Asignar nuevos roles
+                foreach ($request->roles as $roleId) {
+                    $user->roles()->attach($roleId, [
+                        'asignado_por' => auth()->id(),
+                        'fecha_asignacion' => now(),
+                        'activo' => true
+                    ]);
+                }
             }
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
-                'actualizacion_usuario',
+                'administracion_sistema',
+                'ACTUALIZACION_USUARIO',
+                'Administración',
+                "Usuario actualizado: {$user->email}",
                 'users',
-                "Usuario actualizado: {$usuario->email}",
-                'users',
-                $usuario->id,
+                $user->id,
                 $datosAnteriores,
-                $usuario->toArray()
+                $user->toArray()
             );
 
             DB::commit();
 
-            return $this->sendResponse($usuario->load(['roles', 'permissions']), 
-                'Usuario actualizado exitosamente');
+            return $this->success($user->load('roles'), 'Usuario actualizado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al actualizar usuario', [$e->getMessage()], 500);
+            return $this->error('Error al actualizar usuario: ' . $e->getMessage(), 500);
         }
     }
 
@@ -305,15 +242,10 @@ class UserController extends BaseController
      */
     public function cambiarPassword(Request $request, $id)
     {
-        $usuario = User::find($id);
+        $user = User::find($id);
 
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
-        }
-
-        // Verificar que no sea el mismo usuario o tenga permisos
-        if (auth()->id() != $id && !auth()->user()->hasPermission('cambiar_password_usuarios')) {
-            return $this->sendError('No tiene permisos para cambiar la contraseña de este usuario', [], 403);
+        if (!$user) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
@@ -321,13 +253,11 @@ class UserController extends BaseController
             'password' => ['required', 'confirmed', Password::min(8)
                 ->mixedCase()
                 ->numbers()
-                ->symbols()
-                ->uncompromised()],
-            'forzar_cambio' => 'boolean'
+                ->symbols()],
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
@@ -335,46 +265,38 @@ class UserController extends BaseController
 
             // Verificar contraseña actual si es el mismo usuario
             if (auth()->id() == $id) {
-                if (!Hash::check($request->password_actual, $usuario->password)) {
-                    return $this->sendError('La contraseña actual es incorrecta', [], 401);
+                if (!Hash::check($request->password_actual, $user->password)) {
+                    return $this->error('La contraseña actual es incorrecta', 401);
                 }
             }
 
-            $datosAnteriores = $usuario->toArray();
+            $datosAnteriores = $user->toArray();
 
-            $usuario->password = Hash::make($request->password);
-            $usuario->password_changed_at = now();
-            
-            if ($request->boolean('forzar_cambio')) {
-                $usuario->force_password_change = true;
-            }
-
-            $usuario->save();
-
-            // Revocar otras sesiones (opcional)
-            if ($request->boolean('revocar_sesiones')) {
-                DB::table('sessions')->where('user_id', $usuario->id)->delete();
-            }
+            $user->password = Hash::make($request->password);
+            $user->last_password_change = Carbon::now();
+            $user->password_expires_at = Carbon::now()->addDays(90);
+            $user->force_password_change = false;
+            $user->save();
 
             $this->logActivity(
                 auth()->id(),
                 'seguridad',
-                'cambio_password',
+                'CAMBIO_PASSWORD',
+                'Seguridad',
+                "Contraseña cambiada para usuario: {$user->email}",
                 'users',
-                "Contraseña cambiada para usuario: {$usuario->email}",
-                'users',
-                $usuario->id,
+                $user->id,
                 $datosAnteriores,
-                $usuario->toArray()
+                $user->toArray()
             );
 
             DB::commit();
 
-            return $this->sendResponse([], 'Contraseña cambiada exitosamente');
+            return $this->success([], 'Contraseña cambiada exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al cambiar contraseña', [$e->getMessage()], 500);
+            return $this->error('Error al cambiar contraseña: ' . $e->getMessage(), 500);
         }
     }
 
@@ -383,66 +305,65 @@ class UserController extends BaseController
      */
     public function bloquear(Request $request, $id)
     {
-        $usuario = User::find($id);
+        $user = User::find($id);
 
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
-        }
-
-        if (!$usuario->activo) {
-            return $this->sendError('El usuario ya está inactivo', [], 403);
+        if (!$user) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
             'motivo' => 'required|string|max:500',
-            'dias_bloqueo' => 'nullable|integer|min:1'
+            'minutos_bloqueo' => 'nullable|integer|min:1'
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            $datosAnteriores = $usuario->toArray();
+            $datosAnteriores = $user->toArray();
 
-            $usuario->activo = false;
+            $minutos = $request->minutos_bloqueo ?? 30;
+            $user->locked_until = Carbon::now()->addMinutes($minutos);
             
-            $metadata = $usuario->metadata ?? [];
-            $metadata['bloqueos'][] = [
-                'fecha' => now()->toDateTimeString(),
-                'usuario_id' => auth()->id(),
-                'motivo' => $request->motivo,
-                'dias_bloqueo' => $request->dias_bloqueo,
-                'fecha_fin' => $request->dias_bloqueo ? now()->addDays($request->dias_bloqueo) : null
-            ];
-            $usuario->metadata = $metadata;
-            
-            $usuario->save();
+            $user->save();
 
-            // Revocar sesiones activas
-            DB::table('sessions')->where('user_id', $usuario->id)->delete();
+            // Registrar en historial de conexiones
+            HistorialConexion::create([
+                'user_id' => $user->id,
+                'fecha_hora' => now(),
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'dispositivo' => $this->parseUserAgent($request->userAgent()),
+                'exitosa' => false
+            ]);
+
+            // Revocar tokens
+            DB::table('personal_access_tokens')
+                ->where('tokenable_id', $user->id)
+                ->delete();
 
             $this->logActivity(
                 auth()->id(),
                 'seguridad',
-                'bloqueo_usuario',
+                'BLOQUEO_USUARIO',
+                'Seguridad',
+                "Usuario bloqueado: {$user->email} - Motivo: {$request->motivo}",
                 'users',
-                "Usuario bloqueado: {$usuario->email} - Motivo: {$request->motivo}",
-                'users',
-                $usuario->id,
+                $user->id,
                 $datosAnteriores,
-                $usuario->toArray()
+                $user->toArray()
             );
 
             DB::commit();
 
-            return $this->sendResponse($usuario, 'Usuario bloqueado exitosamente');
+            return $this->success($user, 'Usuario bloqueado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al bloquear usuario', [$e->getMessage()], 500);
+            return $this->error('Error al bloquear usuario: ' . $e->getMessage(), 500);
         }
     }
 
@@ -451,14 +372,10 @@ class UserController extends BaseController
      */
     public function desbloquear(Request $request, $id)
     {
-        $usuario = User::find($id);
+        $user = User::find($id);
 
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
-        }
-
-        if ($usuario->activo) {
-            return $this->sendError('El usuario ya está activo', [], 403);
+        if (!$user) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
@@ -466,46 +383,47 @@ class UserController extends BaseController
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            $datosAnteriores = $usuario->toArray();
+            $datosAnteriores = $user->toArray();
 
-            $usuario->activo = true;
-            $usuario->failed_login_attempts = 0;
-            
-            $metadata = $usuario->metadata ?? [];
-            $metadata['desbloqueos'][] = [
-                'fecha' => now()->toDateTimeString(),
-                'usuario_id' => auth()->id(),
-                'motivo' => $request->motivo
-            ];
-            $usuario->metadata = $metadata;
-            
-            $usuario->save();
+            $user->locked_until = null;
+            $user->failed_login_attempts = 0;
+            $user->save();
+
+            // Registrar en historial de conexiones
+            HistorialConexion::create([
+                'user_id' => $user->id,
+                'fecha_hora' => now(),
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'dispositivo' => $this->parseUserAgent($request->userAgent()),
+                'exitosa' => true
+            ]);
 
             $this->logActivity(
                 auth()->id(),
                 'seguridad',
-                'desbloqueo_usuario',
+                'DESBLOQUEO_USUARIO',
+                'Seguridad',
+                "Usuario desbloqueado: {$user->email} - Motivo: {$request->motivo}",
                 'users',
-                "Usuario desbloqueado: {$usuario->email} - Motivo: {$request->motivo}",
-                'users',
-                $usuario->id,
+                $user->id,
                 $datosAnteriores,
-                $usuario->toArray()
+                $user->toArray()
             );
 
             DB::commit();
 
-            return $this->sendResponse($usuario, 'Usuario desbloqueado exitosamente');
+            return $this->success($user, 'Usuario desbloqueado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al desbloquear usuario', [$e->getMessage()], 500);
+            return $this->error('Error al desbloquear usuario: ' . $e->getMessage(), 500);
         }
     }
 
@@ -514,10 +432,10 @@ class UserController extends BaseController
      */
     public function asignarRol(Request $request, $id)
     {
-        $usuario = User::find($id);
+        $user = User::find($id);
 
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
+        if (!$user) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
@@ -525,37 +443,58 @@ class UserController extends BaseController
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            $rol = Role::find($request->rol_id);
+            // Verificar si ya tiene el rol activo
+            $rolActivo = DB::table('user_role')
+                ->where('user_id', $user->id)
+                ->where('role_id', $request->rol_id)
+                ->whereNull('fecha_revocacion')
+                ->exists();
 
-            if ($usuario->roles->contains($rol->id)) {
-                return $this->sendError('El usuario ya tiene asignado este rol', [], 409);
+            if ($rolActivo) {
+                return $this->error('El usuario ya tiene este rol asignado', 409);
             }
 
-            $usuario->roles()->attach($rol->id);
+            // Revocar rol activo si existe (soft delete)
+            DB::table('user_role')
+                ->where('user_id', $user->id)
+                ->where('role_id', $request->rol_id)
+                ->update([
+                    'fecha_revocacion' => now(),
+                    'activo' => false
+                ]);
+
+            // Asignar nuevo rol
+            $user->roles()->attach($request->rol_id, [
+                'asignado_por' => auth()->id(),
+                'fecha_asignacion' => now(),
+                'activo' => true
+            ]);
+
+            $rol = Role::find($request->rol_id);
 
             $this->logActivity(
                 auth()->id(),
                 'seguridad',
-                'asignacion_rol',
+                'ASIGNACION_ROL',
+                'Seguridad',
+                "Rol {$rol->nombre} asignado a usuario {$user->email}",
                 'users',
-                "Rol {$rol->name} asignado a usuario {$usuario->email}",
-                'users',
-                $usuario->id
+                $user->id
             );
 
             DB::commit();
 
-            return $this->sendResponse($usuario->load('roles'), 'Rol asignado exitosamente');
+            return $this->success($user->load('roles'), 'Rol asignado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al asignar rol', [$e->getMessage()], 500);
+            return $this->error('Error al asignar rol: ' . $e->getMessage(), 500);
         }
     }
 
@@ -564,10 +503,10 @@ class UserController extends BaseController
      */
     public function quitarRol(Request $request, $id)
     {
-        $usuario = User::find($id);
+        $user = User::find($id);
 
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
+        if (!$user) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
@@ -575,7 +514,7 @@ class UserController extends BaseController
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
@@ -583,40 +522,37 @@ class UserController extends BaseController
 
             $rol = Role::find($request->rol_id);
 
-            if (!$usuario->roles->contains($rol->id)) {
-                return $this->sendError('El usuario no tiene asignado este rol', [], 404);
+            // Revocar rol
+            $updated = DB::table('user_role')
+                ->where('user_id', $user->id)
+                ->where('role_id', $request->rol_id)
+                ->whereNull('fecha_revocacion')
+                ->update([
+                    'fecha_revocacion' => now(),
+                    'activo' => false
+                ]);
+
+            if ($updated === 0) {
+                return $this->error('El usuario no tiene este rol asignado', 404);
             }
-
-            // Verificar que no sea el último administrador
-            if ($rol->name == 'Administrador' && $usuario->roles()->where('name', 'Administrador')->count() == 1) {
-                $adminCount = User::whereHas('roles', function($q) {
-                    $q->where('name', 'Administrador');
-                })->count();
-
-                if ($adminCount <= 1) {
-                    return $this->sendError('No se puede quitar el rol de administrador al último administrador del sistema', [], 409);
-                }
-            }
-
-            $usuario->roles()->detach($rol->id);
 
             $this->logActivity(
                 auth()->id(),
                 'seguridad',
-                'remocion_rol',
+                'REVOCACION_ROL',
+                'Seguridad',
+                "Rol {$rol->nombre} revocado de usuario {$user->email}",
                 'users',
-                "Rol {$rol->name} removido de usuario {$usuario->email}",
-                'users',
-                $usuario->id
+                $user->id
             );
 
             DB::commit();
 
-            return $this->sendResponse($usuario->load('roles'), 'Rol removido exitosamente');
+            return $this->success($user->load('roles'), 'Rol revocado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al remover rol', [$e->getMessage()], 500);
+            return $this->error('Error al revocar rol: ' . $e->getMessage(), 500);
         }
     }
 
@@ -625,228 +561,83 @@ class UserController extends BaseController
      */
     public function permisos($id)
     {
-        $usuario = User::find($id);
+        $user = User::find($id);
 
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
+        if (!$user) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
-        $permisos = [
-            'roles' => $usuario->roles->pluck('name'),
-            'permisos_rol' => $usuario->getPermissionsViaRoles()->pluck('name'),
-            'permisos_directos' => $usuario->permissions->pluck('name'),
-            'todos_permisos' => $usuario->getAllPermissions()->pluck('name'),
-            'estructura' => $this->estructurarPermisos($usuario)
-        ];
+        $rolesActivos = $user->roles()
+            ->wherePivot('fecha_revocacion', null)
+            ->with('permissions')
+            ->get();
 
-        return $this->sendResponse($permisos, 'Permisos del usuario obtenidos exitosamente');
-    }
+        $permisosDirectos = [];
+        $permisosPorRol = [];
 
-    /**
-     * Registrar inicio de sesión
-     */
-    public function registrarLogin(Request $request, $id)
-    {
-        $usuario = User::find($id);
-
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
-        }
-
-        $validator = Validator::make($request->all(), [
-            'ip_address' => 'required|ip',
-            'user_agent' => 'required|string',
-            'dispositivo' => 'nullable|string',
-            'ubicacion' => 'nullable|array'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            $sesion = [
-                'fecha' => now()->toDateTimeString(),
-                'ip' => $request->ip_address,
-                'user_agent' => $request->user_agent,
-                'dispositivo' => $request->dispositivo,
-                'ubicacion' => $request->ubicacion,
-                'exitoso' => true
-            ];
-
-            $metadata = $usuario->metadata ?? [];
-            $metadata['sesiones'][] = $sesion;
-            $usuario->metadata = $metadata;
-            
-            $usuario->ultimo_acceso = now();
-            $usuario->ultimo_ip = $request->ip_address;
-            $usuario->save();
-
-            DB::commit();
-
-            return $this->sendResponse($sesion, 'Login registrado exitosamente');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return $this->sendError('Error al registrar login', [$e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Obtener sesiones activas
-     */
-    public function sesionesActivas($id)
-    {
-        $usuario = User::find($id);
-
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
-        }
-
-        $sesiones = DB::table('sessions')
-            ->where('user_id', $usuario->id)
-            ->where('last_activity', '>=', now()->subHours(24)->timestamp)
-            ->get()
-            ->map(function ($sesion) {
-                return [
-                    'id' => $sesion->id,
-                    'ip_address' => $sesion->ip_address,
-                    'user_agent' => $sesion->user_agent,
-                    'last_activity' => Carbon::createFromTimestamp($sesion->last_activity)->toDateTimeString(),
-                    'payload' => json_decode($sesion->payload, true)
+        foreach ($rolesActivos as $rol) {
+            foreach ($rol->permissions as $permiso) {
+                $permisosPorRol[] = [
+                    'id' => $permiso->id,
+                    'name' => $permiso->name,
+                    'slug' => $permiso->slug,
+                    'modulo' => $permiso->modulo,
+                    'via_rol' => $rol->nombre
                 ];
-            });
+            }
+        }
 
-        return $this->sendResponse([
-            'usuario_id' => $usuario->id,
-            'sesiones_activas' => $sesiones->count(),
-            'detalle' => $sesiones
-        ], 'Sesiones activas obtenidas exitosamente');
+        return $this->success([
+            'roles' => $rolesActivos->pluck('nombre'),
+            'permisos_por_rol' => $permisosPorRol,
+            'permisos_agrupados' => collect($permisosPorRol)->groupBy('modulo')
+        ], 'Permisos del usuario obtenidos exitosamente');
     }
 
     /**
-     * Cerrar sesiones (logout forzado)
-     */
-    public function cerrarSesiones(Request $request, $id)
-    {
-        $usuario = User::find($id);
-
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
-        }
-
-        $validator = Validator::make($request->all(), [
-            'sesion_id' => 'nullable|string',
-            'excepto_actual' => 'boolean'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            $query = DB::table('sessions')->where('user_id', $usuario->id);
-
-            if ($request->has('sesion_id')) {
-                $query->where('id', $request->sesion_id);
-            }
-
-            if ($request->boolean('excepto_actual')) {
-                $sessionId = request()->session()->getId();
-                $query->where('id', '!=', $sessionId);
-            }
-
-            $count = $query->delete();
-
-            $this->logActivity(
-                auth()->id(),
-                'seguridad',
-                'cierre_sesiones',
-                'users',
-                "Se cerraron {$count} sesiones del usuario {$usuario->email}",
-                'users',
-                $usuario->id
-            );
-
-            DB::commit();
-
-            return $this->sendResponse([
-                'sesiones_cerradas' => $count
-            ], 'Sesiones cerradas exitosamente');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return $this->sendError('Error al cerrar sesiones', [$e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Obtener logs de actividad del usuario
+     * Obtener actividad del usuario
      */
     public function actividad(Request $request, $id)
     {
-        $usuario = User::find($id);
+        $user = User::find($id);
 
-        if (!$usuario) {
-            return $this->sendError('Usuario no encontrado');
+        if (!$user) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
         $query = Bitacora::where('usuario_id', $id);
 
         if ($request->has('fecha_inicio')) {
-            $query->where('fecha', '>=', Carbon::parse($request->fecha_inicio));
+            $query->where('created_at', '>=', Carbon::parse($request->fecha_inicio));
         }
 
         if ($request->has('fecha_fin')) {
-            $query->where('fecha', '<=', Carbon::parse($request->fecha_fin));
-        }
-
-        if ($request->has('categoria')) {
-            $query->where('categoria', $request->categoria);
+            $query->where('created_at', '<=', Carbon::parse($request->fecha_fin));
         }
 
         if ($request->has('tipo_evento')) {
             $query->where('tipo_evento', $request->tipo_evento);
         }
 
-        $actividades = $query->orderBy('fecha', 'desc')
+        $actividades = $query->orderBy('created_at', 'desc')
             ->paginate($request->get('per_page', 15));
 
-        return $this->sendResponse($actividades, 'Actividades del usuario obtenidas exitosamente');
+        return $this->success($actividades, 'Actividad del usuario obtenida exitosamente');
     }
 
     /**
-     * Métodos privados
+     * Parsear user agent
      */
-    private function estructurarPermisos($usuario)
+    private function parseUserAgent(?string $userAgent): ?string
     {
-        $todosPermisos = $usuario->getAllPermissions();
-        
-        $estructura = [];
-        
-        foreach ($todosPermisos as $permiso) {
-            $partes = explode('.', $permiso->name);
-            $modulo = $partes[0] ?? 'general';
-            $accion = $partes[1] ?? 'ver';
-            
-            if (!isset($estructura[$modulo])) {
-                $estructura[$modulo] = [
-                    'nombre' => $modulo,
-                    'permisos' => []
-                ];
-            }
-            
-            $estructura[$modulo]['permisos'][] = [
-                'nombre' => $permiso->name,
-                'accion' => $accion,
-                'descripcion' => $permiso->description
-            ];
+        if (!$userAgent) {
+            return null;
         }
-        
-        return array_values($estructura);
+
+        if (preg_match('/\((.*?)\)/', $userAgent, $matches)) {
+            return $matches[1];
+        }
+
+        return substr($userAgent, 0, 100);
     }
 }

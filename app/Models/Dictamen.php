@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Dictamen extends Model
 {
@@ -65,37 +66,55 @@ class Dictamen extends Model
     ];
 
     protected $casts = [
-        'fecha_emision'             => 'date',
-        'fecha_toma_muestra'        => 'date',
-        'fecha_pruebas'             => 'date',
-        'fecha_resultados'          => 'date',
-        'volumen_muestra'           => 'decimal:2',
-        'metodos_aplicados'         => 'array',
-        'densidad_api'              => 'decimal:2',
-        'azufre'                    => 'decimal:2',
-        'composicion_molar'         => 'array',
-        'propiedades_fisicas'       => 'array',
-        'propiedades_quimicas'      => 'array',
-        'poder_calorifico'          => 'decimal:4',
+        'fecha_emision' => 'date',
+        'fecha_toma_muestra' => 'date',
+        'fecha_pruebas' => 'date',
+        'fecha_resultados' => 'date',
+        'volumen_muestra' => 'decimal:2',
+        'metodos_aplicados' => 'array',
+        'densidad_api' => 'decimal:2',
+        'azufre' => 'decimal:2',
+        'composicion_molar' => 'array',
+        'propiedades_fisicas' => 'array',
+        'propiedades_quimicas' => 'array',
+        'poder_calorifico' => 'decimal:4',
         'poder_calorifico_superior' => 'decimal:4',
         'poder_calorifico_inferior' => 'decimal:4',
-        'octanaje_ron'              => 'decimal:2',
-        'octanaje_mon'              => 'decimal:2',
-        'indice_octano'             => 'decimal:2',
-        'contiene_bioetanol'        => 'boolean',
-        'porcentaje_bioetanol'      => 'decimal:2',
-        'contiene_biodiesel'        => 'boolean',
-        'porcentaje_biodiesel'      => 'decimal:2',
-        'contiene_bioturbosina'     => 'boolean',
-        'porcentaje_bioturbosina'   => 'decimal:2',
-        'fame'                      => 'decimal:2',
-        'porcentaje_propano'        => 'decimal:2',
-        'porcentaje_butano'         => 'decimal:2',
-        'propano_normalizado'       => 'decimal:2',
-        'butano_normalizado'        => 'decimal:2',
-        'composicion_normalizada'   => 'array',
-        'archivos_adicionales'      => 'array',
+        'octanaje_ron' => 'decimal:2',
+        'octanaje_mon' => 'decimal:2',
+        'indice_octano' => 'decimal:2',
+        'contiene_bioetanol' => 'boolean',
+        'porcentaje_bioetanol' => 'decimal:2',
+        'contiene_biodiesel' => 'boolean',
+        'porcentaje_biodiesel' => 'decimal:2',
+        'contiene_bioturbosina' => 'boolean',
+        'porcentaje_bioturbosina' => 'decimal:2',
+        'fame' => 'decimal:2',
+        'porcentaje_propano' => 'decimal:2',
+        'porcentaje_butano' => 'decimal:2',
+        'propano_normalizado' => 'decimal:2',
+        'butano_normalizado' => 'decimal:2',
+        'composicion_normalizada' => 'array',
+        'archivos_adicionales' => 'array',
     ];
+
+    public const ESTADO_VIGENTE = 'VIGENTE';
+    public const ESTADO_CADUCADO = 'CADUCADO';
+    public const ESTADO_CANCELADO = 'CANCELADO';
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->folio)) {
+                $model->folio = 'DIC-' . Str::uuid();
+            }
+            if (empty($model->numero_lote)) {
+                $model->numero_lote = 'LOTE-' . Str::uuid();
+            }
+        });
+    }
 
     public function contribuyente()
     {

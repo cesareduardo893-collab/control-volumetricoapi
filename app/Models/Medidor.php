@@ -33,7 +33,6 @@ class Medidor extends Model
         'certificado_calibracion',
         'laboratorio_calibracion',
         'incertidumbre_calibracion',
-        'historial_calibraciones',
         'protocolo_comunicacion',
         'direccion_ip',
         'puerto_comunicacion',
@@ -49,23 +48,35 @@ class Medidor extends Model
     ];
 
     protected $casts = [
-        'precision'                    => 'decimal:3',
-        'repetibilidad'                 => 'decimal:3',
-        'capacidad_maxima'              => 'decimal:4',
-        'capacidad_minima'              => 'decimal:4',
-        'fecha_instalacion'             => 'date',
-        'fecha_ultima_calibracion'      => 'date',
-        'fecha_proxima_calibracion'     => 'date',
-        'incertidumbre_calibracion'     => 'decimal:3',
-        'historial_calibraciones'       => 'array',
-        'parametros_conexion'           => 'array',
-        'mecanismos_seguridad'          => 'array',
-        'evidencias_alteracion'         => 'array',
-        'ultima_deteccion_alteracion'   => 'datetime',
-        'alerta_alteracion'             => 'boolean',
-        'historial_desconexiones'       => 'array',
-        'activo'                         => 'boolean',
+        'precision' => 'decimal:3',
+        'repetibilidad' => 'decimal:3',
+        'capacidad_maxima' => 'decimal:4',
+        'capacidad_minima' => 'decimal:4',
+        'fecha_instalacion' => 'date',
+        'fecha_ultima_calibracion' => 'date',
+        'fecha_proxima_calibracion' => 'date',
+        'incertidumbre_calibracion' => 'decimal:3',
+        'parametros_conexion' => 'array',
+        'mecanismos_seguridad' => 'array',
+        'evidencias_alteracion' => 'array',
+        'ultima_deteccion_alteracion' => 'datetime',
+        'alerta_alteracion' => 'boolean',
+        'historial_desconexiones' => 'array',
+        'activo' => 'boolean',
     ];
+
+    public const ELEMENTO_TIPO_PRIMARIO = 'primario';
+    public const ELEMENTO_TIPO_SECUNDARIO = 'secundario';
+    public const ELEMENTO_TIPO_TERCIARIO = 'terciario';
+
+    public const TIPO_MEDICION_ESTATICA = 'estatica';
+    public const TIPO_MEDICION_DINAMICA = 'dinamica';
+
+    public const ESTADO_OPERATIVO = 'OPERATIVO';
+    public const ESTADO_CALIBRACION = 'CALIBRACION';
+    public const ESTADO_MANTENIMIENTO = 'MANTENIMIENTO';
+    public const ESTADO_FUERA_SERVICIO = 'FUERA_SERVICIO';
+    public const ESTADO_FALLA_COMUNICACION = 'FALLA_COMUNICACION';
 
     public function tanque()
     {
@@ -90,5 +101,10 @@ class Medidor extends Model
     public function tecnologia()
     {
         return $this->belongsTo(CatalogoValor::class, 'tecnologia_id');
+    }
+
+    public function historialCalibracionesMedidor()
+    {
+        return $this->hasMany(HistorialCalibracionMedidor::class, 'medidor_id');
     }
 }

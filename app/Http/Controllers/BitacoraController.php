@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Bitacora;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -11,72 +12,61 @@ use Carbon\Carbon;
 class BitacoraController extends BaseController
 {
     /**
-     * Listar eventos de bitácora (solo lectura)
+     * Listar eventos de bitácora
      */
     public function index(Request $request)
     {
-        // Verificar permisos (solo usuarios autorizados pueden ver bitácora)
-        if (!auth()->user()->hasPermission('ver_bitacora')) {
-            return $this->sendError('No tiene permisos para ver la bitácora', [], 403);
-        }
-
-        $query = Bitacora::with('usuario');
+        $query = Bitacora::with(['usuario']);
 
         // Filtros
-        if ($request->has('fecha_inicio')) {
-            $query->where('fecha', '>=', Carbon::parse($request->fecha_inicio)->startOfDay());
-        }
-
-        if ($request->has('fecha_fin')) {
-            $query->where('fecha', '<=', Carbon::parse($request->fecha_fin)->endOfDay());
-        }
-
         if ($request->has('usuario_id')) {
             $query->where('usuario_id', $request->usuario_id);
-        }
-
-        if ($request->has('categoria')) {
-            $query->where('categoria', $request->categoria);
         }
 
         if ($request->has('tipo_evento')) {
             $query->where('tipo_evento', $request->tipo_evento);
         }
 
-        if ($request->has('severidad')) {
-            $query->where('severidad', $request->severidad);
+        if ($request->has('subtipo_evento')) {
+            $query->where('subtipo_evento', $request->subtipo_evento);
         }
 
-        if ($request->has('ip_origen')) {
-            $query->where('ip_origen', 'LIKE', "%{$request->ip_origen}%");
+        if ($request->has('modulo')) {
+            $query->where('modulo', $request->modulo);
         }
 
-        if ($request->has('entidad_afectada')) {
-            $query->where('entidad_afectada', $request->entidad_afectada);
+        if ($request->has('tabla')) {
+            $query->where('tabla', $request->tabla);
         }
 
-        if ($request->has('entidad_id')) {
-            $query->where('entidad_id', $request->entidad_id);
+        if ($request->has('registro_id')) {
+            $query->where('registro_id', $request->registro_id);
         }
 
-        if ($request->has('buscar')) {
-            $query->where(function($q) use ($request) {
-                $q->where('descripcion', 'LIKE', "%{$request->buscar}%")
-                  ->orWhere('detalle', 'LIKE', "%{$request->buscar}%")
-                  ->orWhere('ip_origen', 'LIKE', "%{$request->buscar}%");
-            });
+        if ($request->has('fecha_inicio')) {
+            $query->where('created_at', '>=', Carbon::parse($request->fecha_inicio));
         }
 
-        // Verificar integridad de la bitácora (hash chain)
-        if ($request->boolean('verificar_integridad')) {
-            $this->verificarIntegridadBitacora();
+        if ($request->has('fecha_fin')) {
+            $query->where('created_at', '<=', Carbon::parse($request->fecha_fin));
         }
 
-        $bitacora = $query->orderBy('fecha', 'desc')
-            ->orderBy('numero_registro', 'desc')
+        if ($request->has('ip_address')) {
+            $query->where('ip_address', 'LIKE', "%{$request->ip_address}%");
+        }
+
+        if ($request->has('numero_registro')) {
+            $query->where('numero_registro', 'LIKE', "%{$request->numero_registro}%");
+        }
+
+        if ($request->has('descripcion')) {
+            $query->where('descripcion', 'LIKE', "%{$request->descripcion}%");
+        }
+
+        $eventos = $query->orderBy('created_at', 'desc')
             ->paginate($request->get('per_page', 15));
 
-        return $this->sendResponse($bitacora, 'Eventos de bitácora obtenidos exitosamente');
+        return $this->success($eventos, 'Eventos de bitácora obtenidos exitosamente');
     }
 
     /**
@@ -84,80 +74,13 @@ class BitacoraController extends BaseController
      */
     public function show($id)
     {
-        if (!auth()->user()->hasPermission('ver_bitacora')) {
-            return $this->sendError('No tiene permisos para ver la bitácora', [], 403);
-        }
-
-        $evento = Bitacora::with('usuario')->find($id);
+        $evento = Bitacora::with(['usuario'])->find($id);
 
         if (!$evento) {
-            return $this->sendError('Evento de bitácora no encontrado');
+            return $this->error('Evento de bitácora no encontrado', 404);
         }
 
-        // Verificar hash del evento específico
-        $hashCalculado = $this->calcularHashEvento($evento);
-        if ($hashCalculado !== $evento->hash) {
-            $evento->integridad_verificada = false;
-            $evento->hash_calculado = $hashCalculado;
-        } else {
-            $evento->integridad_verificada = true;
-        }
-
-        // Verificar encadenamiento
-        if ($evento->numero_registro > 1) {
-            $eventoAnterior = Bitacora::where('numero_registro', $evento->numero_registro - 1)->first();
-            if ($eventoAnterior) {
-                $hashEsperado = hash('sha256', $eventoAnterior->hash . $evento->contenido_para_hash);
-                $evento->encadenamiento_valido = ($hashEsperado === $evento->hash_anterior);
-            }
-        }
-
-        return $this->sendResponse($evento, 'Evento de bitácora obtenido exitosamente');
-    }
-
-    /**
-     * Exportar bitácora
-     */
-    public function exportar(Request $request)
-    {
-        if (!auth()->user()->hasPermission('exportar_bitacora')) {
-            return $this->sendError('No tiene permisos para exportar la bitácora', [], 403);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'formato' => 'required|in:CSV,PDF,JSON',
-            'fecha_inicio' => 'required|date',
-            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
-        }
-
-        $query = Bitacora::with('usuario')
-            ->whereBetween('fecha', [
-                Carbon::parse($request->fecha_inicio)->startOfDay(),
-                Carbon::parse($request->fecha_fin)->endOfDay()
-            ]);
-
-        if ($request->has('categoria')) {
-            $query->where('categoria', $request->categoria);
-        }
-
-        if ($request->has('tipo_evento')) {
-            $query->where('tipo_evento', $request->tipo_evento);
-        }
-
-        $eventos = $query->orderBy('fecha')->get();
-
-        switch ($request->formato) {
-            case 'CSV':
-                return $this->exportarCSV($eventos);
-            case 'PDF':
-                return $this->exportarPDF($eventos);
-            case 'JSON':
-                return $this->exportarJSON($eventos);
-        }
+        return $this->success($evento, 'Evento de bitácora obtenido exitosamente');
     }
 
     /**
@@ -165,42 +88,39 @@ class BitacoraController extends BaseController
      */
     public function resumenActividad(Request $request)
     {
-        if (!auth()->user()->hasPermission('ver_bitacora')) {
-            return $this->sendError('No tiene permisos para ver la bitácora', [], 403);
-        }
-
         $validator = Validator::make($request->all(), [
             'fecha_inicio' => 'required|date',
-            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio'
+            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
-        $eventos = Bitacora::whereBetween('fecha', [
-            Carbon::parse($request->fecha_inicio)->startOfDay(),
-            Carbon::parse($request->fecha_fin)->endOfDay()
-        ])->get();
+        $eventos = Bitacora::whereBetween('created_at', [
+                Carbon::parse($request->fecha_inicio),
+                Carbon::parse($request->fecha_fin)
+            ])
+            ->get();
 
         $resumen = [
             'periodo' => [
                 'inicio' => $request->fecha_inicio,
-                'fin' => $request->fecha_fin
+                'fin' => $request->fecha_fin,
             ],
             'total_eventos' => $eventos->count(),
-            'por_categoria' => $eventos->groupBy('categoria')
+            'por_tipo_evento' => $eventos->groupBy('tipo_evento')
                 ->map(function ($items) {
                     return [
                         'cantidad' => $items->count(),
-                        'porcentaje' => round(($items->count() / max($eventos->count(), 1)) * 100, 2)
+                        'porcentaje' => round(($items->count() / max($eventos->count(), 1)) * 100, 2),
                     ];
                 }),
-            'por_severidad' => $eventos->groupBy('severidad')
+            'por_modulo' => $eventos->groupBy('modulo')
                 ->map(function ($items) {
                     return [
                         'cantidad' => $items->count(),
-                        'porcentaje' => round(($items->count() / max($eventos->count(), 1)) * 100, 2)
+                        'porcentaje' => round(($items->count() / max($eventos->count(), 1)) * 100, 2),
                     ];
                 }),
             'actividad_usuarios' => $eventos->groupBy('usuario_id')
@@ -208,209 +128,244 @@ class BitacoraController extends BaseController
                     $usuario = $items->first()->usuario;
                     return [
                         'usuario_id' => $usuario ? $usuario->id : null,
-                        'usuario_nombre' => $usuario ? $usuario->name : 'Sistema',
-                        'usuario_rfc' => $usuario ? $usuario->rfc : null,
+                        'usuario_nombre' => $usuario ? $usuario->nombres . ' ' . $usuario->apellidos : 'Sistema',
                         'eventos' => $items->count(),
-                        'ultimo_evento' => $items->max('fecha')
                     ];
                 })->values(),
-            'eventos_por_dia' => $eventos->groupBy(function ($item) {
-                    return $item->fecha->format('Y-m-d');
+            'tendencia_diaria' => $eventos->groupBy(function ($item) {
+                    return $item->created_at->format('Y-m-d');
                 })
                 ->map(function ($items, $fecha) {
                     return [
                         'fecha' => $fecha,
                         'total' => $items->count(),
-                        'criticos' => $items->where('severidad', 'CRITICA')->count()
                     ];
-                })->values()
+                })->values(),
         ];
 
-        return $this->sendResponse($resumen, 'Resumen de actividad obtenido exitosamente');
+        return $this->success($resumen, 'Resumen de actividad obtenido exitosamente');
     }
 
     /**
-     * Verificar integridad de la bitácora
+     * Obtener actividad por usuario
      */
-    public function verificarIntegridad()
+    public function actividadUsuario(Request $request, $usuarioId)
     {
-        if (!auth()->user()->hasPermission('verificar_bitacora')) {
-            return $this->sendError('No tiene permisos para verificar la bitácora', [], 403);
+        $usuario = User::find($usuarioId);
+
+        if (!$usuario) {
+            return $this->error('Usuario no encontrado', 404);
         }
 
-        $resultado = $this->verificarIntegridadBitacora(true);
-
-        $this->logActivity(
-            auth()->id(),
-            'seguridad',
-            'verificacion_bitacora',
-            'bitacoras',
-            "Verificación de integridad de bitácora realizada. Resultado: " . ($resultado['valida'] ? 'VÁLIDA' : 'INVÁLIDA'),
-            'bitacoras',
-            null,
-            null,
-            ['resultado' => $resultado]
-        );
-
-        return $this->sendResponse($resultado, 'Verificación de integridad completada');
-    }
-
-    /**
-     * Métodos privados
-     */
-    private function verificarIntegridadBitacora($detallada = false)
-    {
-        $eventos = Bitacora::orderBy('numero_registro')->get();
-        $hashAnterior = null;
-        $errores = [];
-        $verificados = 0;
-
-        foreach ($eventos as $evento) {
-            // Verificar hash del evento
-            $hashCalculado = $this->calcularHashEvento($evento);
-            if ($hashCalculado !== $evento->hash) {
-                $errores[] = [
-                    'numero_registro' => $evento->numero_registro,
-                    'tipo' => 'hash_modificado',
-                    'esperado' => $evento->hash,
-                    'calculado' => $hashCalculado
-                ];
-            }
-
-            // Verificar encadenamiento
-            if ($hashAnterior !== null) {
-                $hashAnteriorEsperado = hash('sha256', $hashAnterior . $evento->contenido_para_hash);
-                if ($hashAnteriorEsperado !== $evento->hash_anterior) {
-                    $errores[] = [
-                        'numero_registro' => $evento->numero_registro,
-                        'tipo' => 'encadenamiento_roto',
-                        'esperado' => $hashAnteriorEsperado,
-                        'encontrado' => $evento->hash_anterior
-                    ];
-                }
-            }
-
-            $hashAnterior = $evento->hash;
-            $verificados++;
-        }
-
-        if ($detallada) {
-            return [
-                'valida' => empty($errores),
-                'total_verificados' => $verificados,
-                'errores' => $errores,
-                'fecha_verificacion' => now()->toDateTimeString()
-            ];
-        }
-
-        return empty($errores);
-    }
-
-    private function calcularHashEvento($evento)
-    {
-        $contenido = implode('|', [
-            $evento->numero_registro,
-            $evento->fecha->toIso8601String(),
-            $evento->usuario_id ?? 'SISTEMA',
-            $evento->categoria,
-            $evento->tipo_evento,
-            $evento->descripcion,
-            $evento->ip_origen ?? '',
-            $evento->mac_address ?? '',
-            $evento->entidad_afectada ?? '',
-            $evento->entidad_id ?? '',
-            json_encode($evento->detalle ?? []),
-            $evento->created_at->toIso8601String()
+        $validator = Validator::make($request->all(), [
+            'fecha_inicio' => 'required|date',
+            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio',
         ]);
 
-        return hash('sha256', $contenido);
-    }
-
-    private function exportarCSV($eventos)
-    {
-        $filename = 'bitacora_' . now()->format('Y-m-d_His') . '.csv';
-        $handle = fopen('php://temp', 'w+');
-
-        // Encabezados
-        fputcsv($handle, [
-            'No. Registro',
-            'Fecha',
-            'Usuario',
-            'Categoría',
-            'Tipo Evento',
-            'Severidad',
-            'Descripción',
-            'IP Origen',
-            'MAC Address',
-            'Entidad Afectada',
-            'Entidad ID',
-            'Hash'
-        ]);
-
-        foreach ($eventos as $evento) {
-            fputcsv($handle, [
-                $evento->numero_registro,
-                $evento->fecha->format('Y-m-d H:i:s'),
-                $evento->usuario ? $evento->usuario->name : 'Sistema',
-                $evento->categoria,
-                $evento->tipo_evento,
-                $evento->severidad,
-                $evento->descripcion,
-                $evento->ip_origen,
-                $evento->mac_address,
-                $evento->entidad_afectada,
-                $evento->entidad_id,
-                $evento->hash
-            ]);
+        if ($validator->fails()) {
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
-        rewind($handle);
-        $content = stream_get_contents($handle);
-        fclose($handle);
+        $eventos = Bitacora::where('usuario_id', $usuarioId)
+            ->whereBetween('created_at', [
+                Carbon::parse($request->fecha_inicio),
+                Carbon::parse($request->fecha_fin)
+            ])
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-        return response($content, 200)
-            ->header('Content-Type', 'text/csv')
-            ->header('Content-Disposition', "attachment; filename={$filename}");
-    }
-
-    private function exportarPDF($eventos)
-    {
-        // Implementar generación de PDF con dompdf o similar
-        $pdf = \PDF::loadView('exports.bitacora-pdf', [
-            'eventos' => $eventos,
-            'fecha_generacion' => now()
-        ]);
-
-        return $pdf->download('bitacora_' . now()->format('Y-m-d_His') . '.pdf');
-    }
-
-    private function exportarJSON($eventos)
-    {
-        return response()->json([
-            'fecha_generacion' => now()->toIso8601String(),
+        $resumen = [
+            'usuario_id' => $usuarioId,
+            'usuario_nombre' => $usuario->nombres . ' ' . $usuario->apellidos,
+            'periodo' => [
+                'inicio' => $request->fecha_inicio,
+                'fin' => $request->fecha_fin,
+            ],
             'total_eventos' => $eventos->count(),
-            'eventos' => $eventos->map(function ($evento) {
+            'por_modulo' => $eventos->groupBy('modulo')
+                ->map(function ($items) {
+                    return $items->count();
+                }),
+            'por_tipo_evento' => $eventos->groupBy('tipo_evento')
+                ->map(function ($items) {
+                    return $items->count();
+                }),
+            'eventos' => $eventos,
+        ];
+
+        return $this->success($resumen, 'Actividad del usuario obtenida exitosamente');
+    }
+
+    /**
+     * Obtener actividad por módulo
+     */
+    public function actividadModulo(Request $request, $modulo)
+    {
+        $validator = Validator::make($request->all(), [
+            'fecha_inicio' => 'required|date',
+            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error('Error de validación', 422, $validator->errors());
+        }
+
+        $eventos = Bitacora::where('modulo', $modulo)
+            ->whereBetween('created_at', [
+                Carbon::parse($request->fecha_inicio),
+                Carbon::parse($request->fecha_fin)
+            ])
+            ->orderBy('created_at', 'desc')
+            ->with('usuario')
+            ->get();
+
+        $resumen = [
+            'modulo' => $modulo,
+            'periodo' => [
+                'inicio' => $request->fecha_inicio,
+                'fin' => $request->fecha_fin,
+            ],
+            'total_eventos' => $eventos->count(),
+            'por_tipo_evento' => $eventos->groupBy('tipo_evento')
+                ->map(function ($items) {
+                    return $items->count();
+                }),
+            'por_usuario' => $eventos->groupBy('usuario_id')
+                ->map(function ($items) {
+                    $usuario = $items->first()->usuario;
+                    return [
+                        'usuario' => $usuario ? $usuario->nombres . ' ' . $usuario->apellidos : 'Sistema',
+                        'eventos' => $items->count(),
+                    ];
+                })->values(),
+            'eventos' => $eventos,
+        ];
+
+        return $this->success($resumen, 'Actividad del módulo obtenida exitosamente');
+    }
+
+    /**
+     * Obtener actividad por tabla
+     */
+    public function actividadTabla(Request $request, $tabla, $registroId = null)
+    {
+        $validator = Validator::make($request->all(), [
+            'fecha_inicio' => 'required|date',
+            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error('Error de validación', 422, $validator->errors());
+        }
+
+        $query = Bitacora::where('tabla', $tabla)
+            ->whereBetween('created_at', [
+                Carbon::parse($request->fecha_inicio),
+                Carbon::parse($request->fecha_fin)
+            ]);
+
+        if ($registroId) {
+            $query->where('registro_id', $registroId);
+        }
+
+        $eventos = $query->orderBy('created_at', 'desc')
+            ->with('usuario')
+            ->get();
+
+        $resumen = [
+            'tabla' => $tabla,
+            'registro_id' => $registroId,
+            'periodo' => [
+                'inicio' => $request->fecha_inicio,
+                'fin' => $request->fecha_fin,
+            ],
+            'total_eventos' => $eventos->count(),
+            'por_tipo_evento' => $eventos->groupBy('subtipo_evento')
+                ->map(function ($items) {
+                    return $items->count();
+                }),
+            'eventos' => $eventos->map(function ($e) {
                 return [
-                    'numero_registro' => $evento->numero_registro,
-                    'fecha' => $evento->fecha->toIso8601String(),
-                    'usuario' => $evento->usuario ? [
-                        'id' => $evento->usuario->id,
-                        'name' => $evento->usuario->name,
-                        'rfc' => $evento->usuario->rfc
-                    ] : null,
-                    'categoria' => $evento->categoria,
-                    'tipo_evento' => $evento->tipo_evento,
-                    'severidad' => $evento->severidad,
-                    'descripcion' => $evento->descripcion,
-                    'ip_origen' => $evento->ip_origen,
-                    'mac_address' => $evento->mac_address,
-                    'entidad_afectada' => $evento->entidad_afectada,
-                    'entidad_id' => $evento->entidad_id,
-                    'detalle' => $evento->detalle,
-                    'hash' => $evento->hash,
-                    'hash_anterior' => $evento->hash_anterior
+                    'id' => $e->id,
+                    'numero_registro' => $e->numero_registro,
+                    'fecha' => $e->created_at->toDateTimeString(),
+                    'usuario' => $e->usuario ? $e->usuario->nombres . ' ' . $e->usuario->apellidos : 'Sistema',
+                    'subtipo_evento' => $e->subtipo_evento,
+                    'descripcion' => $e->descripcion,
+                    'datos_anteriores' => $e->datos_anteriores,
+                    'datos_nuevos' => $e->datos_nuevos,
                 ];
-            })
-        ])->header('Content-Disposition', 'attachment; filename="bitacora_' . now()->format('Y-m-d_His') . '.json"');
+            }),
+        ];
+
+        return $this->success($resumen, 'Actividad de la tabla obtenida exitosamente');
+    }
+
+    /**
+     * Exportar bitácora (simulado)
+     */
+    public function exportar(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'formato' => 'required|in:CSV,PDF,JSON',
+            'fecha_inicio' => 'required|date',
+            'fecha_fin' => 'required|date|after_or_equal:fecha_inicio',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error('Error de validación', 422, $validator->errors());
+        }
+
+        $eventos = Bitacora::whereBetween('created_at', [
+                Carbon::parse($request->fecha_inicio),
+                Carbon::parse($request->fecha_fin)
+            ])
+            ->with('usuario')
+            ->orderBy('created_at')
+            ->get();
+
+        $data = [
+            'generado' => now()->toDateTimeString(),
+            'usuario' => auth()->user()->nombres . ' ' . auth()->user()->apellidos,
+            'periodo' => [
+                'inicio' => $request->fecha_inicio,
+                'fin' => $request->fecha_fin,
+            ],
+            'total_registros' => $eventos->count(),
+            'eventos' => $eventos->map(function ($e) {
+                return [
+                    'numero_registro' => $e->numero_registro,
+                    'fecha_hora' => $e->created_at->toDateTimeString(),
+                    'usuario' => $e->usuario ? $e->usuario->nombres . ' ' . $e->usuario->apellidos : 'Sistema',
+                    'tipo_evento' => $e->tipo_evento,
+                    'subtipo_evento' => $e->subtipo_evento,
+                    'modulo' => $e->modulo,
+                    'tabla' => $e->tabla,
+                    'registro_id' => $e->registro_id,
+                    'descripcion' => $e->descripcion,
+                    'ip_address' => $e->ip_address,
+                    'hash' => $e->hash_actual,
+                ];
+            }),
+        ];
+
+        // Simular exportación según formato
+        switch ($request->formato) {
+            case 'JSON':
+                return response()->json($data)
+                    ->header('Content-Disposition', 'attachment; filename="bitacora.json"');
+            case 'CSV':
+                // Simulación de CSV
+                return response("CSV export simulation", 200)
+                    ->header('Content-Type', 'text/csv')
+                    ->header('Content-Disposition', 'attachment; filename="bitacora.csv"');
+            case 'PDF':
+                // Simulación de PDF
+                return response("PDF export simulation", 200)
+                    ->header('Content-Type', 'application/pdf')
+                    ->header('Content-Disposition', 'attachment; filename="bitacora.pdf"');
+            default:
+                return $this->success($data, 'Exportación generada exitosamente');
+        }
     }
 }

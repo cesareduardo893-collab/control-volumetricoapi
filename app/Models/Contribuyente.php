@@ -38,10 +38,10 @@ class Contribuyente extends Model
 
     protected $casts = [
         'certificados_vigentes' => 'array',
-        'ultima_verificacion'   => 'date',
-        'proxima_verificacion'  => 'date',
-        'activo'                 => 'boolean',
-        'fecha_registro'         => 'date',
+        'ultima_verificacion' => 'date',
+        'proxima_verificacion' => 'date',
+        'activo' => 'boolean',
+        'fecha_registro' => 'date',
     ];
 
     public function instalaciones()

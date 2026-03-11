@@ -31,7 +31,6 @@ class User extends Authenticatable
         'last_login_ip',
         'last_login_user_agent',
         'dispositivos_autorizados',
-        'historial_conexiones',
         'failed_login_attempts',
         'locked_until',
         'two_factor_secret',
@@ -45,22 +44,24 @@ class User extends Authenticatable
         'remember_token',
         'two_factor_secret',
         'two_factor_recovery_codes',
+        'session_token',
     ];
 
     protected $casts = [
-        'email_verified_at'        => 'datetime',
-        'last_login_at'            => 'datetime',
-        'password_expires_at'      => 'datetime',
-        'last_password_change'     => 'datetime',
-        'locked_until'             => 'datetime',
-        'session_expires_at'       => 'datetime',
+        'email_verified_at' => 'datetime',
+        'last_login_at' => 'datetime',
+        'password_expires_at' => 'datetime',
+        'last_password_change' => 'datetime',
+        'locked_until' => 'datetime',
+        'session_expires_at' => 'datetime',
         'dispositivos_autorizados' => 'array',
-        'historial_conexiones'     => 'array',
-        'activo'                   => 'boolean',
-        'force_password_change'    => 'boolean',
+        'two_factor_recovery_codes' => 'array',
+        'activo' => 'boolean',
+        'force_password_change' => 'boolean',
+        'login_attempts' => 'integer',
+        'failed_login_attempts' => 'integer',
     ];
 
-    // Relaciones
     public function roles()
     {
         return $this->belongsToMany(Role::class, 'user_role')
@@ -97,5 +98,10 @@ class User extends Authenticatable
     public function reportesSatGenerados()
     {
         return $this->hasMany(ReporteSat::class, 'usuario_genera_id');
+    }
+
+    public function historialConexiones()
+    {
+        return $this->hasMany(HistorialConexion::class, 'user_id');
     }
 }

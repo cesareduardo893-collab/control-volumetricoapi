@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Tanque;
 use App\Models\Instalacion;
-use App\Models\Existencia;
+use App\Models\Producto;
+use App\Models\HistorialCalibracion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -17,46 +18,50 @@ class TanqueController extends BaseController
      */
     public function index(Request $request)
     {
-        $query = Tanque::with(['instalacion', 'productoActual']);
+        $query = Tanque::with(['instalacion', 'producto'])->whereNull('deleted_at');
 
         // Filtros
         if ($request->has('instalacion_id')) {
             $query->where('instalacion_id', $request->instalacion_id);
         }
 
-        if ($request->has('tipo')) {
-            $query->where('tipo', $request->tipo);
+        if ($request->has('producto_id')) {
+            $query->where('producto_id', $request->producto_id);
         }
 
-        if ($request->has('producto_actual_id')) {
-            $query->where('producto_actual_id', $request->producto_actual_id);
+        if ($request->has('identificador')) {
+            $query->where('identificador', 'LIKE', "%{$request->identificador}%");
         }
 
-        if ($request->has('estatus')) {
-            $query->where('estatus', $request->estatus);
+        if ($request->has('numero_serie')) {
+            $query->where('numero_serie', 'LIKE', "%{$request->numero_serie}%");
         }
 
-        if ($request->has('codigo')) {
-            $query->where('codigo', 'LIKE', "%{$request->codigo}%");
+        if ($request->has('estado')) {
+            $query->where('estado', $request->estado);
+        }
+
+        if ($request->has('tipo_tanque_id')) {
+            $query->where('tipo_tanque_id', $request->tipo_tanque_id);
+        }
+
+        if ($request->has('activo')) {
+            $query->where('activo', $request->boolean('activo'));
         }
 
         if ($request->has('calibracion_proxima')) {
             $query->where('fecha_proxima_calibracion', '<=', Carbon::parse($request->calibracion_proxima));
         }
 
-        if ($request->boolean('alerta_activa')) {
-            $query->where(function($q) {
-                $q->where('nivel_actual', '<=', DB::raw('nivel_minimo_operacion'))
-                  ->orWhere('nivel_actual', '>=', DB::raw('nivel_maximo_operacion'))
-                  ->orWhereDate('fecha_proxima_calibracion', '<=', now()->addMonth());
-            });
+        if ($request->boolean('alerta_alteracion')) {
+            $query->where('alerta_alteracion', true);
         }
 
         $tanques = $query->orderBy('instalacion_id')
-            ->orderBy('codigo')
+            ->orderBy('identificador')
             ->paginate($request->get('per_page', 15));
 
-        return $this->sendResponse($tanques, 'Tanques obtenidos exitosamente');
+        return $this->success($tanques, 'Tanques obtenidos exitosamente');
     }
 
     /**
@@ -66,40 +71,42 @@ class TanqueController extends BaseController
     {
         $validator = Validator::make($request->all(), [
             'instalacion_id' => 'required|exists:instalaciones,id',
-            'codigo' => 'required|string|max:50|unique:tanques,codigo,NULL,id,instalacion_id,' . $request->instalacion_id,
-            'tipo' => 'required|in:ALMACENAMIENTO,PROCESO,AUTOTANQUE,CARROTANQUE',
-            'capacidad_nominal' => 'required|numeric|min:0',
-            'capacidad_operativa' => 'required|numeric|min:0|lte:capacidad_nominal',
-            'unidad_capacidad' => 'required|in:LITROS,M3,BARRILES,GALONES',
-            'nivel_minimo_operacion' => 'required|numeric|min:0',
-            'nivel_maximo_operacion' => 'required|numeric|min:0|gt:nivel_minimo_operacion|lte:capacidad_operativa',
-            'nivel_alarma_alto' => 'required|numeric|min:0|lte:capacidad_operativa',
-            'nivel_alarma_bajo' => 'required|numeric|min:0|lte:nivel_alarma_alto',
-            'producto_actual_id' => 'nullable|exists:productos,id',
+            'producto_id' => 'nullable|exists:productos,id',
+            'numero_serie' => 'nullable|string|max:255',
+            'identificador' => 'required|string|max:255|unique:tanques,identificador',
+            'modelo' => 'nullable|string|max:255',
+            'fabricante' => 'nullable|string|max:255',
+            'material' => 'required|string|max:100',
+            'capacidad_total' => 'required|numeric|min:0',
+            'capacidad_util' => 'required|numeric|min:0|lte:capacidad_total',
+            'capacidad_operativa' => 'required|numeric|min:0|lte:capacidad_util',
+            'capacidad_minima' => 'required|numeric|min:0',
+            'capacidad_gas_talon' => 'nullable|numeric|min:0',
             'fecha_fabricacion' => 'nullable|date',
             'fecha_instalacion' => 'nullable|date',
             'fecha_ultima_calibracion' => 'nullable|date',
             'fecha_proxima_calibracion' => 'nullable|date|after:fecha_ultima_calibracion',
-            'numero_certificado_calibracion' => 'nullable|string|max:100',
-            'material' => 'nullable|string|max:100',
-            'espesor_pared' => 'nullable|numeric|min:0',
-            'temperatura_operacion_min' => 'nullable|numeric',
-            'temperatura_operacion_max' => 'nullable|numeric|gt:temperatura_operacion_min',
-            'presion_operacion_max' => 'nullable|numeric|min:0',
-            'configuracion_medicion' => 'nullable|array',
-            'configuracion_medicion.tipo_medicion' => 'required_with:configuracion_medicion|in:AUTOMATICA,MANUAL,MIXTA',
-            'configuracion_medicion.instrumentos' => 'required_with:configuracion_medicion|array',
-            'configuracion_medicion.frecuencia_lectura' => 'required_with:configuracion_medicion|integer|min:1',
-            'tabla_calibracion' => 'nullable|array',
-            'tabla_calibracion.*.nivel' => 'required_with:tabla_calibracion|numeric',
-            'tabla_calibracion.*.volumen' => 'required_with:tabla_calibracion|numeric',
-            'observaciones' => 'nullable|string|max:1000',
-            'estatus' => 'required|in:OPERACION,MANTENIMIENTO,INACTIVO,FUERA_SERVICIO',
-            'activo' => 'boolean'
+            'certificado_calibracion' => 'nullable|string|max:255',
+            'entidad_calibracion' => 'nullable|string|max:255',
+            'incertidumbre_medicion' => 'nullable|numeric|min:0',
+            'temperatura_referencia' => 'required|numeric',
+            'presion_referencia' => 'required|numeric',
+            'tipo_medicion' => 'required|in:estatica,dinamica',
+            'estado' => 'required|in:OPERATIVO,MANTENIMIENTO,FUERA_SERVICIO,CALIBRACION',
+            'tabla_aforo' => 'nullable|array',
+            'curvas_calibracion' => 'nullable|array',
+            'evidencias_alteracion' => 'nullable|array',
+            'ultima_deteccion_alteracion' => 'nullable|date',
+            'alerta_alteracion' => 'boolean',
+            'tipo_tanque_id' => 'nullable|exists:catalogo_valores,id',
+            'placas' => 'nullable|string|max:255',
+            'numero_economico' => 'nullable|string|max:255',
+            'observaciones' => 'nullable|string',
+            'activo' => 'boolean',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
@@ -107,65 +114,63 @@ class TanqueController extends BaseController
 
             // Validar instalación activa
             $instalacion = Instalacion::find($request->instalacion_id);
-            if (!$instalacion->activo) {
-                return $this->sendError('La instalación no está activa', [], 422);
-            }
-
-            // Validar consistencia de niveles
-            if ($request->nivel_alarma_alto > $request->nivel_maximo_operacion) {
-                return $this->sendError('El nivel de alarma alto no puede ser mayor al nivel máximo de operación', [], 422);
-            }
-
-            if ($request->nivel_alarma_bajo < $request->nivel_minimo_operacion) {
-                return $this->sendError('El nivel de alarma bajo no puede ser menor al nivel mínimo de operación', [], 422);
+            if (!$instalacion || !$instalacion->activo) {
+                return $this->error('La instalación no está activa', 422);
             }
 
             $tanque = Tanque::create([
                 'instalacion_id' => $request->instalacion_id,
-                'codigo' => $request->codigo,
-                'tipo' => $request->tipo,
-                'capacidad_nominal' => $request->capacidad_nominal,
+                'producto_id' => $request->producto_id,
+                'numero_serie' => $request->numero_serie,
+                'identificador' => $request->identificador,
+                'modelo' => $request->modelo,
+                'fabricante' => $request->fabricante,
+                'material' => $request->material,
+                'capacidad_total' => $request->capacidad_total,
+                'capacidad_util' => $request->capacidad_util,
                 'capacidad_operativa' => $request->capacidad_operativa,
-                'unidad_capacidad' => $request->unidad_capacidad,
-                'nivel_minimo_operacion' => $request->nivel_minimo_operacion,
-                'nivel_maximo_operacion' => $request->nivel_maximo_operacion,
-                'nivel_alarma_alto' => $request->nivel_alarma_alto,
-                'nivel_alarma_bajo' => $request->nivel_alarma_bajo,
-                'producto_actual_id' => $request->producto_actual_id,
+                'capacidad_minima' => $request->capacidad_minima,
+                'capacidad_gas_talon' => $request->capacidad_gas_talon,
                 'fecha_fabricacion' => $request->fecha_fabricacion,
                 'fecha_instalacion' => $request->fecha_instalacion,
                 'fecha_ultima_calibracion' => $request->fecha_ultima_calibracion,
                 'fecha_proxima_calibracion' => $request->fecha_proxima_calibracion,
-                'numero_certificado_calibracion' => $request->numero_certificado_calibracion,
-                'material' => $request->material,
-                'espesor_pared' => $request->espesor_pared,
-                'temperatura_operacion_min' => $request->temperatura_operacion_min,
-                'temperatura_operacion_max' => $request->temperatura_operacion_max,
-                'presion_operacion_max' => $request->presion_operacion_max,
-                'configuracion_medicion' => $request->configuracion_medicion,
-                'tabla_calibracion' => $request->tabla_calibracion,
+                'certificado_calibracion' => $request->certificado_calibracion,
+                'entidad_calibracion' => $request->entidad_calibracion,
+                'incertidumbre_medicion' => $request->incertidumbre_medicion,
+                'temperatura_referencia' => $request->temperatura_referencia,
+                'presion_referencia' => $request->presion_referencia,
+                'tipo_medicion' => $request->tipo_medicion,
+                'estado' => $request->estado,
+                'tabla_aforo' => $request->tabla_aforo,
+                'curvas_calibracion' => $request->curvas_calibracion,
+                'evidencias_alteracion' => $request->evidencias_alteracion,
+                'ultima_deteccion_alteracion' => $request->ultima_deteccion_alteracion,
+                'alerta_alteracion' => $request->boolean('alerta_alteracion', false),
+                'tipo_tanque_id' => $request->tipo_tanque_id,
+                'placas' => $request->placas,
+                'numero_economico' => $request->numero_economico,
                 'observaciones' => $request->observaciones,
-                'estatus' => $request->estatus,
-                'activo' => $request->boolean('activo', true)
+                'activo' => $request->boolean('activo', true),
             ]);
 
             $this->logActivity(
                 auth()->id(),
                 'configuracion',
-                'creacion_tanque',
-                'tanques',
-                "Tanque creado: {$tanque->codigo} en instalación {$instalacion->clave_instalacion}",
+                'CREACION_TANQUE',
+                'Configuración',
+                "Tanque creado: {$tanque->identificador}",
                 'tanques',
                 $tanque->id
             );
 
             DB::commit();
 
-            return $this->sendResponse($tanque->load('instalacion'), 'Tanque creado exitosamente', 201);
+            return $this->success($tanque->load(['instalacion', 'producto']), 'Tanque creado exitosamente', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al crear tanque', [$e->getMessage()], 500);
+            return $this->error('Error al crear tanque: ' . $e->getMessage(), 500);
         }
     }
 
@@ -176,30 +181,20 @@ class TanqueController extends BaseController
     {
         $tanque = Tanque::with([
             'instalacion',
-            'productoActual',
+            'producto',
             'medidores' => function($q) {
                 $q->where('activo', true);
             },
-            'existencias' => function($q) {
-                $q->latest()->limit(30);
-            },
-            'registrosVolumetricos' => function($q) {
-                $q->latest()->limit(20);
-            },
-            'alarmas' => function($q) {
-                $q->where('estado', 'ACTIVA');
+            'historialCalibraciones' => function($q) {
+                $q->latest('fecha_calibracion')->limit(10);
             }
         ])->find($id);
 
         if (!$tanque) {
-            return $this->sendError('Tanque no encontrado');
+            return $this->error('Tanque no encontrado', 404);
         }
 
-        // Calcular nivel actual
-        $tanque->nivel_actual = $this->calcularNivelActual($tanque);
-        $tanque->porcentaje_ocupacion = ($tanque->nivel_actual / $tanque->capacidad_operativa) * 100;
-
-        return $this->sendResponse($tanque, 'Tanque obtenido exitosamente');
+        return $this->success($tanque, 'Tanque obtenido exitosamente');
     }
 
     /**
@@ -210,62 +205,48 @@ class TanqueController extends BaseController
         $tanque = Tanque::find($id);
 
         if (!$tanque) {
-            return $this->sendError('Tanque no encontrado');
+            return $this->error('Tanque no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
-            'codigo' => "sometimes|string|max:50|unique:tanques,codigo,{$id},id,instalacion_id,{$tanque->instalacion_id}",
-            'tipo' => 'sometimes|in:ALMACENAMIENTO,PROCESO,AUTOTANQUE,CARROTANQUE',
-            'capacidad_nominal' => 'sometimes|numeric|min:0',
-            'capacidad_operativa' => 'sometimes|numeric|min:0|lte:capacidad_nominal',
-            'unidad_capacidad' => 'sometimes|in:LITROS,M3,BARRILES,GALONES',
-            'nivel_minimo_operacion' => 'sometimes|numeric|min:0',
-            'nivel_maximo_operacion' => 'sometimes|numeric|min:0|gt:nivel_minimo_operacion',
-            'nivel_alarma_alto' => 'sometimes|numeric|min:0',
-            'nivel_alarma_bajo' => 'sometimes|numeric|min:0',
-            'producto_actual_id' => 'nullable|exists:productos,id',
+            'producto_id' => 'nullable|exists:productos,id',
+            'numero_serie' => 'nullable|string|max:255',
+            'identificador' => "sometimes|string|max:255|unique:tanques,identificador,{$id}",
+            'modelo' => 'nullable|string|max:255',
+            'fabricante' => 'nullable|string|max:255',
+            'material' => 'sometimes|string|max:100',
+            'capacidad_total' => 'sometimes|numeric|min:0',
+            'capacidad_util' => 'sometimes|numeric|min:0|lte:capacidad_total',
+            'capacidad_operativa' => 'sometimes|numeric|min:0|lte:capacidad_util',
+            'capacidad_minima' => 'sometimes|numeric|min:0',
+            'capacidad_gas_talon' => 'nullable|numeric|min:0',
             'fecha_fabricacion' => 'nullable|date',
             'fecha_instalacion' => 'nullable|date',
             'fecha_ultima_calibracion' => 'nullable|date',
             'fecha_proxima_calibracion' => 'nullable|date|after:fecha_ultima_calibracion',
-            'numero_certificado_calibracion' => 'nullable|string|max:100',
-            'material' => 'nullable|string|max:100',
-            'espesor_pared' => 'nullable|numeric|min:0',
-            'temperatura_operacion_min' => 'nullable|numeric',
-            'temperatura_operacion_max' => 'nullable|numeric|gt:temperatura_operacion_min',
-            'presion_operacion_max' => 'nullable|numeric|min:0',
-            'configuracion_medicion' => 'nullable|array',
-            'tabla_calibracion' => 'nullable|array',
-            'observaciones' => 'nullable|string|max:1000',
-            'estatus' => 'sometimes|in:OPERACION,MANTENIMIENTO,INACTIVO,FUERA_SERVICIO',
-            'activo' => 'sometimes|boolean'
+            'certificado_calibracion' => 'nullable|string|max:255',
+            'entidad_calibracion' => 'nullable|string|max:255',
+            'incertidumbre_medicion' => 'nullable|numeric|min:0',
+            'temperatura_referencia' => 'sometimes|numeric',
+            'presion_referencia' => 'sometimes|numeric',
+            'tipo_medicion' => 'sometimes|in:estatica,dinamica',
+            'estado' => 'sometimes|in:OPERATIVO,MANTENIMIENTO,FUERA_SERVICIO,CALIBRACION',
+            'tabla_aforo' => 'nullable|array',
+            'curvas_calibracion' => 'nullable|array',
+            'alerta_alteracion' => 'sometimes|boolean',
+            'tipo_tanque_id' => 'nullable|exists:catalogo_valores,id',
+            'placas' => 'nullable|string|max:255',
+            'numero_economico' => 'nullable|string|max:255',
+            'observaciones' => 'nullable|string',
+            'activo' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
-
-            // Validar consistencia de niveles si se actualizan
-            if ($request->has('nivel_alarma_alto') || $request->has('nivel_maximo_operacion')) {
-                $nivelAlarmaAlto = $request->nivel_alarma_alto ?? $tanque->nivel_alarma_alto;
-                $nivelMaximo = $request->nivel_maximo_operacion ?? $tanque->nivel_maximo_operacion;
-                
-                if ($nivelAlarmaAlto > $nivelMaximo) {
-                    return $this->sendError('El nivel de alarma alto no puede ser mayor al nivel máximo de operación', [], 422);
-                }
-            }
-
-            if ($request->has('nivel_alarma_bajo') || $request->has('nivel_minimo_operacion')) {
-                $nivelAlarmaBajo = $request->nivel_alarma_bajo ?? $tanque->nivel_alarma_bajo;
-                $nivelMinimo = $request->nivel_minimo_operacion ?? $tanque->nivel_minimo_operacion;
-                
-                if ($nivelAlarmaBajo < $nivelMinimo) {
-                    return $this->sendError('El nivel de alarma bajo no puede ser menor al nivel mínimo de operación', [], 422);
-                }
-            }
 
             $datosAnteriores = $tanque->toArray();
             $tanque->update($request->all());
@@ -273,9 +254,9 @@ class TanqueController extends BaseController
             $this->logActivity(
                 auth()->id(),
                 'configuracion',
-                'actualizacion_tanque',
-                'tanques',
-                "Tanque actualizado: {$tanque->codigo}",
+                'ACTUALIZACION_TANQUE',
+                'Configuración',
+                "Tanque actualizado: {$tanque->identificador}",
                 'tanques',
                 $tanque->id,
                 $datosAnteriores,
@@ -284,11 +265,11 @@ class TanqueController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($tanque, 'Tanque actualizado exitosamente');
+            return $this->success($tanque, 'Tanque actualizado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al actualizar tanque', [$e->getMessage()], 500);
+            return $this->error('Error al actualizar tanque: ' . $e->getMessage(), 500);
         }
     }
 
@@ -300,74 +281,41 @@ class TanqueController extends BaseController
         $tanque = Tanque::find($id);
 
         if (!$tanque) {
-            return $this->sendError('Tanque no encontrado');
+            return $this->error('Tanque no encontrado', 404);
         }
 
-        // Verificar si tiene registros volumétricos
-        $tieneRegistros = $tanque->registrosVolumetricos()->exists();
-        
-        if ($tieneRegistros) {
-            return $this->sendError('No se puede eliminar el tanque porque tiene registros volumétricos asociados', [], 409);
+        // Verificar si tiene medidores asociados
+        $medidoresActivos = $tanque->medidores()->where('activo', true)->count();
+        if ($medidoresActivos > 0) {
+            return $this->error("No se puede eliminar el tanque porque tiene {$medidoresActivos} medidores asociados", 409);
         }
 
         try {
             DB::beginTransaction();
 
             $tanque->activo = false;
-            $tanque->estatus = 'INACTIVO';
+            $tanque->estado = 'FUERA_SERVICIO';
             $tanque->save();
             $tanque->delete();
 
             $this->logActivity(
                 auth()->id(),
                 'configuracion',
-                'eliminacion_tanque',
-                'tanques',
-                "Tanque eliminado: {$tanque->codigo}",
+                'ELIMINACION_TANQUE',
+                'Configuración',
+                "Tanque eliminado: {$tanque->identificador}",
                 'tanques',
                 $tanque->id
             );
 
             DB::commit();
 
-            return $this->sendResponse([], 'Tanque eliminado exitosamente');
+            return $this->success([], 'Tanque eliminado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al eliminar tanque', [$e->getMessage()], 500);
+            return $this->error('Error al eliminar tanque: ' . $e->getMessage(), 500);
         }
-    }
-
-    /**
-     * Obtener existencias del tanque
-     */
-    public function existencias(Request $request, $id)
-    {
-        $tanque = Tanque::find($id);
-
-        if (!$tanque) {
-            return $this->sendError('Tanque no encontrado');
-        }
-
-        $query = Existencia::where('tanque_id', $id)
-            ->with('producto');
-
-        if ($request->has('fecha_inicio')) {
-            $query->where('fecha', '>=', Carbon::parse($request->fecha_inicio));
-        }
-
-        if ($request->has('fecha_fin')) {
-            $query->where('fecha', '<=', Carbon::parse($request->fecha_fin));
-        }
-
-        if ($request->has('producto_id')) {
-            $query->where('producto_id', $request->producto_id);
-        }
-
-        $existencias = $query->orderBy('fecha', 'desc')
-            ->paginate($request->get('per_page', 15));
-
-        return $this->sendResponse($existencias, 'Existencias obtenidas exitosamente');
     }
 
     /**
@@ -378,66 +326,59 @@ class TanqueController extends BaseController
         $tanque = Tanque::find($id);
 
         if (!$tanque) {
-            return $this->sendError('Tanque no encontrado');
+            return $this->error('Tanque no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
             'fecha_calibracion' => 'required|date',
-            'numero_certificado' => 'required|string|max:100',
-            'laboratorio' => 'required|string|max:255',
-            'tecnico_responsable' => 'required|string|max:255',
-            'resultados' => 'required|array',
-            'resultados.volumenes' => 'required|array',
-            'resultados.desviaciones' => 'required|array',
-            'nueva_tabla_calibracion' => 'required|array',
-            'observaciones' => 'nullable|string|max:1000',
-            'archivo_certificado' => 'nullable|file|mimes:pdf|max:10240'
+            'fecha_proxima_calibracion' => 'required|date|after:fecha_calibracion',
+            'certificado_calibracion' => 'required|string|max:255',
+            'entidad_calibracion' => 'required|string|max:255',
+            'incertidumbre_medicion' => 'nullable|numeric|min:0',
+            'tabla_aforo' => 'required|array',
+            'curvas_calibracion' => 'nullable|array',
+            'observaciones' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            // Guardar archivo del certificado
-            $rutaArchivo = null;
-            if ($request->hasFile('archivo_certificado')) {
-                $rutaArchivo = $request->file('archivo_certificado')
-                    ->store("certificados/tanques/{$tanque->id}", 'public');
-            }
-
-            // Actualizar información del tanque
             $datosAnteriores = $tanque->toArray();
-            
-            $tanque->fecha_ultima_calibracion = $request->fecha_calibracion;
-            $tanque->fecha_proxima_calibracion = Carbon::parse($request->fecha_calibracion)->addYear();
-            $tanque->numero_certificado_calibracion = $request->numero_certificado;
-            $tanque->tabla_calibracion = $request->nueva_tabla_calibracion;
-            
-            $metadata = $tanque->metadata ?? [];
-            $metadata['calibraciones'][] = [
-                'fecha' => $request->fecha_calibracion,
-                'certificado' => $request->numero_certificado,
-                'laboratorio' => $request->laboratorio,
-                'tecnico' => $request->tecnico_responsable,
-                'resultados' => $request->resultados,
-                'archivo' => $rutaArchivo,
+
+            // Registrar en tabla historial_calibraciones
+            HistorialCalibracion::create([
+                'tanque_id' => $tanque->id,
+                'fecha_calibracion' => $request->fecha_calibracion,
+                'fecha_proxima_calibracion' => $request->fecha_proxima_calibracion,
+                'certificado_calibracion' => $request->certificado_calibracion,
+                'entidad_calibracion' => $request->entidad_calibracion,
+                'incertidumbre_medicion' => $request->incertidumbre_medicion,
+                'tabla_aforo' => $request->tabla_aforo,
+                'curvas_calibracion' => $request->curvas_calibracion,
                 'observaciones' => $request->observaciones,
-                'registrado_por' => auth()->id(),
-                'fecha_registro' => now()->toDateTimeString()
-            ];
-            $tanque->metadata = $metadata;
-            
+                'usuario_id' => auth()->id(),
+            ]);
+
+            // Actualizar tanque
+            $tanque->fecha_ultima_calibracion = $request->fecha_calibracion;
+            $tanque->fecha_proxima_calibracion = $request->fecha_proxima_calibracion;
+            $tanque->certificado_calibracion = $request->certificado_calibracion;
+            $tanque->entidad_calibracion = $request->entidad_calibracion;
+            $tanque->incertidumbre_medicion = $request->incertidumbre_medicion;
+            $tanque->tabla_aforo = $request->tabla_aforo;
+            $tanque->curvas_calibracion = $request->curvas_calibracion;
             $tanque->save();
 
             $this->logActivity(
                 auth()->id(),
                 'mantenimiento',
-                'calibracion_tanque',
-                'tanques',
-                "Calibración registrada para tanque {$tanque->codigo} - Cert: {$request->numero_certificado}",
+                'CALIBRACION_TANQUE',
+                'Mantenimiento',
+                "Calibración registrada para tanque {$tanque->identificador}",
                 'tanques',
                 $tanque->id,
                 $datosAnteriores,
@@ -446,30 +387,12 @@ class TanqueController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($tanque, 'Calibración registrada exitosamente');
+            return $this->success($tanque, 'Calibración registrada exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al registrar calibración', [$e->getMessage()], 500);
+            return $this->error('Error al registrar calibración: ' . $e->getMessage(), 500);
         }
-    }
-
-    /**
-     * Obtener historial de calibraciones
-     */
-    public function historialCalibraciones($id)
-    {
-        $tanque = Tanque::find($id);
-
-        if (!$tanque) {
-            return $this->sendError('Tanque no encontrado');
-        }
-
-        $historial = collect($tanque->metadata['calibraciones'] ?? [])
-            ->sortByDesc('fecha')
-            ->values();
-
-        return $this->sendResponse($historial, 'Historial de calibraciones obtenido exitosamente');
     }
 
     /**
@@ -477,76 +400,70 @@ class TanqueController extends BaseController
      */
     public function verificarEstado($id)
     {
-        $tanque = Tanque::with('productoActual')->find($id);
+        $tanque = Tanque::with('producto')->find($id);
 
         if (!$tanque) {
-            return $this->sendError('Tanque no encontrado');
+            return $this->error('Tanque no encontrado', 404);
         }
 
-        $nivelActual = $this->calcularNivelActual($tanque);
+        $hoy = Carbon::now();
         $alertas = [];
-
-        // Verificar niveles
-        if ($nivelActual >= $tanque->nivel_alarma_alto) {
-            $alertas[] = [
-                'tipo' => 'NIVEL_ALTO',
-                'severidad' => 'ALTA',
-                'mensaje' => 'El tanque ha alcanzado el nivel de alarma alto',
-                'valor_actual' => $nivelActual,
-                'limite' => $tanque->nivel_alarma_alto
-            ];
-        }
-
-        if ($nivelActual <= $tanque->nivel_alarma_bajo) {
-            $alertas[] = [
-                'tipo' => 'NIVEL_BAJO',
-                'severidad' => 'ALTA',
-                'mensaje' => 'El tanque ha alcanzado el nivel de alarma bajo',
-                'valor_actual' => $nivelActual,
-                'limite' => $tanque->nivel_alarma_bajo
-            ];
-        }
 
         // Verificar calibración
         if ($tanque->fecha_proxima_calibracion) {
-            $diasParaCalibracion = now()->diffInDays($tanque->fecha_proxima_calibracion, false);
+            $diasRestantes = $hoy->diffInDays($tanque->fecha_proxima_calibracion, false);
             
-            if ($diasParaCalibracion <= 30) {
+            if ($diasRestantes <= 0) {
+                $alertas[] = [
+                    'tipo' => 'CALIBRACION_VENCIDA',
+                    'severidad' => 'CRITICA',
+                    'mensaje' => 'La calibración del tanque ha vencido',
+                ];
+            } elseif ($diasRestantes <= 30) {
                 $alertas[] = [
                     'tipo' => 'CALIBRACION_PROXIMA',
-                    'severidad' => $diasParaCalibracion <= 7 ? 'ALTA' : 'MEDIA',
-                    'mensaje' => "Próxima calibración en {$diasParaCalibracion} días",
-                    'fecha_limite' => $tanque->fecha_proxima_calibracion->format('Y-m-d')
+                    'severidad' => 'MEDIA',
+                    'mensaje' => "Próxima calibración en {$diasRestantes} días",
                 ];
             }
         }
 
-        // Verificar producto
-        if (!$tanque->producto_actual_id) {
+        // Verificar alerta de alteración
+        if ($tanque->alerta_alteracion) {
             $alertas[] = [
-                'tipo' => 'SIN_PRODUCTO',
-                'severidad' => 'MEDIA',
-                'mensaje' => 'El tanque no tiene producto asignado'
+                'tipo' => 'ALTERACION_DETECTADA',
+                'severidad' => 'ALTA',
+                'mensaje' => 'Se ha detectado una posible alteración en el tanque',
+                'fecha' => $tanque->ultima_deteccion_alteracion,
             ];
         }
 
+        // Obtener última existencia
+        $ultimaExistencia = DB::table('existencias')
+            ->where('tanque_id', $id)
+            ->orderBy('fecha', 'desc')
+            ->orderBy('hora', 'desc')
+            ->first();
+
         $estado = [
             'tanque_id' => $tanque->id,
-            'codigo' => $tanque->codigo,
-            'estatus' => $tanque->estatus,
+            'identificador' => $tanque->identificador,
+            'estado' => $tanque->estado,
             'activo' => $tanque->activo,
-            'nivel_actual' => $nivelActual,
-            'porcentaje_ocupacion' => ($nivelActual / $tanque->capacidad_operativa) * 100,
-            'producto_actual' => $tanque->productoActual ? [
-                'id' => $tanque->productoActual->id,
-                'nombre' => $tanque->productoActual->nombre,
-                'clave_sat' => $tanque->productoActual->clave_sat
-            ] : null,
+            'producto' => $tanque->producto ? $tanque->producto->nombre : null,
+            'capacidad_operativa' => $tanque->capacidad_operativa,
+            'ultimo_volumen' => $ultimaExistencia ? $ultimaExistencia->volumen_corregido : null,
+            'fecha_ultima_lectura' => $ultimaExistencia ? $ultimaExistencia->fecha : null,
+            'calibracion' => [
+                'ultima' => $tanque->fecha_ultima_calibracion,
+                'proxima' => $tanque->fecha_proxima_calibracion,
+                'certificado' => $tanque->certificado_calibracion,
+            ],
             'alertas' => $alertas,
-            'fecha_verificacion' => now()->toDateTimeString()
+            'fecha_verificacion' => $hoy->toDateTimeString(),
         ];
 
-        return $this->sendResponse($estado, 'Estado del tanque verificado exitosamente');
+        return $this->success($estado, 'Estado del tanque verificado exitosamente');
     }
 
     /**
@@ -557,54 +474,49 @@ class TanqueController extends BaseController
         $tanque = Tanque::find($id);
 
         if (!$tanque) {
-            return $this->sendError('Tanque no encontrado');
+            return $this->error('Tanque no encontrado', 404);
         }
 
         $validator = Validator::make($request->all(), [
             'producto_id' => 'required|exists:productos,id',
+            'motivo' => 'required|string|max:500',
             'fecha_cambio' => 'required|date',
-            'volumen_residual' => 'nullable|numeric|min:0',
-            'requiere_limpieza' => 'boolean',
-            'observaciones' => 'nullable|string|max:500'
+            'observaciones' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError('Error de validación', $validator->errors()->toArray(), 422);
+            return $this->error('Error de validación', 422, $validator->errors());
         }
 
         try {
             DB::beginTransaction();
 
-            $productoAnterior = $tanque->productoActual;
-            
+            $productoAnterior = $tanque->producto;
             $datosAnteriores = $tanque->toArray();
+
+            $tanque->producto_id = $request->producto_id;
             
-            $tanque->producto_actual_id = $request->producto_id;
-            
-            $metadata = $tanque->metadata ?? [];
-            $metadata['cambios_producto'][] = [
+            $evidencias = $tanque->evidencias_alteracion ?? [];
+            $evidencias[] = [
+                'tipo' => 'CAMBIO_PRODUCTO',
                 'fecha' => $request->fecha_cambio,
                 'producto_anterior_id' => $productoAnterior ? $productoAnterior->id : null,
                 'producto_anterior_nombre' => $productoAnterior ? $productoAnterior->nombre : null,
                 'producto_nuevo_id' => $request->producto_id,
-                'volumen_residual' => $request->volumen_residual,
-                'requiere_limpieza' => $request->boolean('requiere_limpieza', false),
+                'motivo' => $request->motivo,
                 'observaciones' => $request->observaciones,
                 'usuario_id' => auth()->id(),
-                'fecha_registro' => now()->toDateTimeString()
             ];
-            $tanque->metadata = $metadata;
+            $tanque->evidencias_alteracion = $evidencias;
             
             $tanque->save();
 
             $this->logActivity(
                 auth()->id(),
                 'operacion',
-                'cambio_producto_tanque',
-                'tanques',
-                "Cambio de producto en tanque {$tanque->codigo}: " . 
-                ($productoAnterior ? $productoAnterior->nombre : 'VACIO') . " -> " . 
-                Tanque::find($request->producto_id)->nombre,
+                'CAMBIO_PRODUCTO_TANQUE',
+                'Operación',
+                "Cambio de producto en tanque {$tanque->identificador}",
                 'tanques',
                 $tanque->id,
                 $datosAnteriores,
@@ -613,11 +525,11 @@ class TanqueController extends BaseController
 
             DB::commit();
 
-            return $this->sendResponse($tanque, 'Producto del tanque actualizado exitosamente');
+            return $this->success($tanque->load('producto'), 'Producto del tanque actualizado exitosamente');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->sendError('Error al cambiar producto del tanque', [$e->getMessage()], 500);
+            return $this->error('Error al cambiar producto: ' . $e->getMessage(), 500);
         }
     }
 
@@ -629,64 +541,42 @@ class TanqueController extends BaseController
         $tanque = Tanque::find($id);
 
         if (!$tanque) {
-            return $this->sendError('Tanque no encontrado');
+            return $this->error('Tanque no encontrado', 404);
         }
 
-        if (!$tanque->tabla_calibracion) {
-            return $this->sendError('El tanque no tiene tabla de calibración', [], 404);
+        if (!$tanque->tabla_aforo) {
+            return $this->error('El tanque no tiene tabla de aforo', 404);
         }
 
-        $curva = [
+        return $this->success([
             'tanque_id' => $tanque->id,
-            'codigo' => $tanque->codigo,
+            'identificador' => $tanque->identificador,
             'fecha_ultima_calibracion' => $tanque->fecha_ultima_calibracion,
-            'certificado' => $tanque->numero_certificado_calibracion,
-            'puntos_calibracion' => $tanque->tabla_calibracion,
-            'grafico' => $this->generarDatosGraficoCalibracion($tanque->tabla_calibracion)
-        ];
-
-        return $this->sendResponse($curva, 'Curva de calibración obtenida exitosamente');
+            'certificado' => $tanque->certificado_calibracion,
+            'tabla_aforo' => $tanque->tabla_aforo,
+            'curvas_calibracion' => $tanque->curvas_calibracion,
+        ], 'Curva de calibración obtenida exitosamente');
     }
 
     /**
-     * Métodos privados
+     * Obtener historial de calibraciones
      */
-    private function calcularNivelActual($tanque)
+    public function historialCalibraciones($id)
     {
-        // Obtener última existencia registrada
-        $ultimaExistencia = Existencia::where('tanque_id', $tanque->id)
-            ->latest('fecha')
-            ->first();
+        $tanque = Tanque::find($id);
 
-        if ($ultimaExistencia) {
-            return $ultimaExistencia->volumen_final;
+        if (!$tanque) {
+            return $this->error('Tanque no encontrado', 404);
         }
 
-        // Si no hay existencias, obtener del último registro volumétrico
-        $ultimoRegistro = $tanque->registrosVolumetricos()
-            ->latest('fecha_operacion')
-            ->first();
+        $historial = HistorialCalibracion::where('tanque_id', $id)
+            ->orderBy('fecha_calibracion', 'desc')
+            ->get();
 
-        if ($ultimoRegistro) {
-            return $ultimoRegistro->volumen_final;
-        }
-
-        return 0;
-    }
-
-    private function generarDatosGraficoCalibracion($tabla)
-    {
-        return [
-            'labels' => array_column($tabla, 'nivel'),
-            'datasets' => [
-                [
-                    'label' => 'Volumen vs Nivel',
-                    'data' => array_column($tabla, 'volumen'),
-                    'borderColor' => 'rgb(75, 192, 192)',
-                    'backgroundColor' => 'rgba(75, 192, 192, 0.2)',
-                    'tension' => 0.1
-                ]
-            ]
-        ];
+        return $this->success([
+            'tanque_id' => $tanque->id,
+            'identificador' => $tanque->identificador,
+            'historial' => $historial,
+        ], 'Historial de calibraciones obtenido exitosamente');
     }
 }

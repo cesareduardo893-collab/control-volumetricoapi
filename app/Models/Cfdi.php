@@ -41,17 +41,24 @@ class Cfdi extends Model
     ];
 
     protected $casts = [
-        'volumen'              => 'decimal:4',
-        'precio_unitario'      => 'decimal:4',
-        'subtotal'             => 'decimal:4',
-        'iva'                  => 'decimal:4',
-        'ieps'                 => 'decimal:4',
-        'total'                => 'decimal:4',
-        'fecha_emision'        => 'datetime',
-        'fecha_certificacion'  => 'datetime',
-        'metadatos'            => 'array',
-        'fecha_cancelacion'    => 'date',
+        'volumen' => 'decimal:4',
+        'precio_unitario' => 'decimal:4',
+        'subtotal' => 'decimal:4',
+        'iva' => 'decimal:4',
+        'ieps' => 'decimal:4',
+        'total' => 'decimal:4',
+        'fecha_emision' => 'datetime',
+        'fecha_certificacion' => 'datetime',
+        'metadatos' => 'array',
+        'fecha_cancelacion' => 'date',
     ];
+
+    public const TIPO_OPERACION_ADQUISICION = 'adquisicion';
+    public const TIPO_OPERACION_ENAJENACION = 'enajenacion';
+    public const TIPO_OPERACION_SERVICIO = 'servicio';
+
+    public const ESTADO_VIGENTE = 'VIGENTE';
+    public const ESTADO_CANCELADO = 'CANCELADO';
 
     public function producto()
     {
