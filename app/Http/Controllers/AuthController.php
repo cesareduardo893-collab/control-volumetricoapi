@@ -351,7 +351,7 @@ class AuthController extends BaseController
      * @param string|null $userAgent
      * @return string|null
      */
-    private function parseUserAgent(?string $userAgent): ?string
+    protected function parseUserAgent(?string $userAgent): ?string
     {
         if (!$userAgent) {
             return null;

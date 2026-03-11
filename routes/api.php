@@ -39,6 +39,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('user', [AuthController::class, 'user']);
     
+    // ==================== DASHBOARD ====================
+    Route::get('dashboard/resumen', [DashboardController::class, 'resumen']);
+    Route::get('dashboard/tiempo-real', [DashboardController::class, 'tiempoReal']);
+
     // ==================== USUARIOS ====================
     Route::apiResource('users', UserController::class);
     Route::post('users/{id}/change-password', [UserController::class, 'cambiarPassword']);
