@@ -628,7 +628,7 @@ class UserController extends BaseController
     /**
      * Parsear user agent
      */
-    private function parseUserAgent(?string $userAgent): ?string
+    protected function parseUserAgent(?string $userAgent): ?string
     {
         if (!$userAgent) {
             return null;
