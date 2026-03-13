@@ -16,11 +16,12 @@ use App\Http\Controllers\DictamenController;
 use App\Http\Controllers\CertificadoVerificacionController;
 use App\Http\Controllers\RegistroVolumetricoController;
 use App\Http\Controllers\ExistenciaController;
-use App\Http\Controllers\AlarmasController;
+use App\Http\Controllers\AlarmaController;
 use App\Http\Controllers\CfdiController;
 use App\Http\Controllers\PedimentoController;
 use App\Http\Controllers\ReporteSatController;
 use App\Http\Controllers\BitacoraController;
+use App\Http\Controllers\DashboardController;
 
 /*
 |--------------------------------------------------------------------------
@@ -42,6 +43,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // ==================== DASHBOARD ====================
     Route::get('dashboard/resumen', [DashboardController::class, 'resumen']);
     Route::get('dashboard/tiempo-real', [DashboardController::class, 'tiempoReal']);
+    Route::get('dashboard/grafica-movimientos', [DashboardController::class, 'graficaMovimientos']);
+    Route::get('dashboard/grafica-productos', [DashboardController::class, 'graficaProductos']);
 
     // ==================== USUARIOS ====================
     Route::apiResource('users', UserController::class);
@@ -100,7 +103,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('dispensarios/{id}/verificar-estado', [DispensarioController::class, 'verificarEstado']);
     
     // ==================== MANGUERAS ====================
-    Route::apiResource('mangueras', MangueraController::class)->except(['store']);
+    Route::apiResource('mangueras', MangueraController::class);
     Route::post('mangueras/{id}/assign-meter', [MangueraController::class, 'asignarMedidor']);
     Route::delete('mangueras/{id}/remove-meter', [MangueraController::class, 'quitarMedidor']);
     
@@ -139,11 +142,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('existencias/por-fecha', [ExistenciaController::class, 'porFecha']);
     
     // ==================== ALARMAS ====================
-    Route::apiResource('alarmas', AlarmasController::class);
-    Route::post('alarmas/{id}/atender', [AlarmasController::class, 'atender']);
-    Route::put('alarmas/{id}/estado', [AlarmasController::class, 'actualizarEstado']);
-    Route::get('alarmas/activas', [AlarmasController::class, 'activas']);
-    Route::get('alarmas/estadisticas', [AlarmasController::class, 'estadisticas']);
+    Route::apiResource('alarmas', AlarmaController::class);
+    Route::post('alarmas/{id}/atender', [AlarmaController::class, 'atender']);
+    Route::put('alarmas/{id}/estado', [AlarmaController::class, 'actualizarEstado']);
+    Route::get('alarmas/activas', [AlarmaController::class, 'activas']);
+    Route::get('alarmas/estadisticas', [AlarmaController::class, 'estadisticas']);
     
     // ==================== CFDI ====================
     Route::apiResource('cfdi', CfdiController::class);

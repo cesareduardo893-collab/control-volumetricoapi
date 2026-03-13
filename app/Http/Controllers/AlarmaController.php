@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
-class AlarmasController extends BaseController
+class AlarmaController extends BaseController
 {
     /**
      * Listar alarmas
@@ -423,5 +423,47 @@ class AlarmasController extends BaseController
             'minimo_minutos' => $tiempos->min(),
             'maximo_minutos' => $tiempos->max(),
         ];
+    }
+
+    /**
+     * Mostrar formulario de edición (no implementado para API)
+     */
+    public function edit($id)
+    {
+        return $this->error('Este método no está disponible en la API', 405);
+    }
+
+    /**
+     * Actualizar alarma
+     */
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'numero_registro' => 'sometimes|string|max:255',
+            'fecha_hora' => 'sometimes|date',
+            'componente_tipo' => 'sometimes|string|max:255',
+            'componente_identificador' => 'sometimes|string|max:255',
+            'tipo_alarma_id' => 'sometimes|integer',
+            'gravedad' => 'sometimes|in:BAJA,MEDIA,ALTA,CRITICA',
+            'descripcion' => 'sometimes|string',
+            'estado_atencion' => 'sometimes|in:PENDIENTE,EN_PROCESO,RESUELTA,IGNORADA',
+            'requiere_atencion_inmediata' => 'sometimes|boolean',
+        ]);
+
+        $alarma = Alarma::findOrFail($id);
+        $alarma->update($request->all());
+
+        return $this->success($alarma, 'Alarma actualizada exitosamente');
+    }
+
+    /**
+     * Eliminar alarma
+     */
+    public function destroy($id)
+    {
+        $alarma = Alarma::findOrFail($id);
+        $alarma->delete();
+
+        return $this->success(null, 'Alarma eliminada exitosamente');
     }
 }

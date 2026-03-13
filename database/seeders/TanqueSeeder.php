@@ -1,0 +1,130 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+
+class TanqueSeeder extends Seeder
+{
+    public function run(): void
+    {
+        $tanques = [
+            [
+                'instalacion_id' => 1,
+                'producto_id' => 1,
+                'numero_serie' => 'TAN-2020-001',
+                'identificador' => 'T-01',
+                'tipo_tanque_id' => 1,
+                'placas' => 'ABC-1234',
+                'numero_economico' => 'NE-001',
+                'modelo' => 'TF-10000',
+                'fabricante' => 'Tanques Industriales SA',
+                'material' => 'Acero al carbono',
+                'capacidad_total' => 10000.0,
+                'capacidad_util' => 9000.0,
+                'capacidad_operativa' => 8500.0,
+                'capacidad_minima' => 500.0,
+                'capacidad_gas_talon' => 500.0,
+                'fecha_fabricacion' => '2020-01-15',
+                'fecha_instalacion' => '2020-06-01',
+                'fecha_ultima_calibracion' => '2024-06-01',
+                'fecha_proxima_calibracion' => '2025-06-01',
+                'certificado_calibracion' => 'CERT-CAL-2024-001',
+                'entidad_calibracion' => 'Laboratorio de Calibración SA',
+                'incertidumbre_medicion' => 0.15,
+                'temperatura_referencia' => 15.0,
+                'presion_referencia' => 1.0,
+                'tipo_medicion' => 'estatica',
+                'estado' => 'OPERATIVO',
+                'tabla_aforo' => json_encode([0 => 0, 1000 => 1000, 5000 => 5000]),
+                'curvas_calibracion' => json_encode(['curva_1' => 'datos']),
+                'evidencias_alteracion' => json_encode([]),
+                'ultima_deteccion_alteracion' => null,
+                'alerta_alteracion' => false,
+                'activo' => true,
+                'observaciones' => 'Tanque de almacenamiento de gasolina regular',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'instalacion_id' => 1,
+                'producto_id' => 2,
+                'numero_serie' => 'TAN-2020-002',
+                'identificador' => 'T-02',
+                'tipo_tanque_id' => 1,
+                'placas' => 'ABC-1235',
+                'numero_economico' => 'NE-002',
+                'modelo' => 'TF-10000',
+                'fabricante' => 'Tanques Industriales SA',
+                'material' => 'Acero al carbono',
+                'capacidad_total' => 10000.0,
+                'capacidad_util' => 9000.0,
+                'capacidad_operativa' => 8500.0,
+                'capacidad_minima' => 500.0,
+                'capacidad_gas_talon' => 500.0,
+                'fecha_fabricacion' => '2020-01-15',
+                'fecha_instalacion' => '2020-06-01',
+                'fecha_ultima_calibracion' => '2024-06-01',
+                'fecha_proxima_calibracion' => '2025-06-01',
+                'certificado_calibracion' => 'CERT-CAL-2024-002',
+                'entidad_calibracion' => 'Laboratorio de Calibración SA',
+                'incertidumbre_medicion' => 0.15,
+                'temperatura_referencia' => 15.0,
+                'presion_referencia' => 1.0,
+                'tipo_medicion' => 'estatica',
+                'estado' => 'OPERATIVO',
+                'tabla_aforo' => json_encode([0 => 0, 1000 => 1000, 5000 => 5000]),
+                'curvas_calibracion' => json_encode(['curva_1' => 'datos']),
+                'evidencias_alteracion' => json_encode([]),
+                'ultima_deteccion_alteracion' => null,
+                'alerta_alteracion' => false,
+                'activo' => true,
+                'observaciones' => 'Tanque de almacenamiento de gasolina premium',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'instalacion_id' => 1,
+                'producto_id' => 3,
+                'numero_serie' => 'TAN-2020-003',
+                'identificador' => 'T-03',
+                'tipo_tanque_id' => 1,
+                'placas' => 'ABC-1236',
+                'numero_economico' => 'NE-003',
+                'modelo' => 'TF-20000',
+                'fabricante' => 'Tanques Industriales SA',
+                'material' => 'Acero al carbono',
+                'capacidad_total' => 20000.0,
+                'capacidad_util' => 18000.0,
+                'capacidad_operativa' => 17000.0,
+                'capacidad_minima' => 1000.0,
+                'capacidad_gas_talon' => 1000.0,
+                'fecha_fabricacion' => '2020-01-15',
+                'fecha_instalacion' => '2020-06-01',
+                'fecha_ultima_calibracion' => '2024-06-01',
+                'fecha_proxima_calibracion' => '2025-06-01',
+                'certificado_calibracion' => 'CERT-CAL-2024-003',
+                'entidad_calibracion' => 'Laboratorio de Calibración SA',
+                'incertidumbre_medicion' => 0.15,
+                'temperatura_referencia' => 15.0,
+                'presion_referencia' => 1.0,
+                'tipo_medicion' => 'estatica',
+                'estado' => 'OPERATIVO',
+                'tabla_aforo' => json_encode([0 => 0, 1000 => 1000, 10000 => 10000]),
+                'curvas_calibracion' => json_encode(['curva_1' => 'datos']),
+                'evidencias_alteracion' => json_encode([]),
+                'ultima_deteccion_alteracion' => null,
+                'alerta_alteracion' => false,
+                'activo' => true,
+                'observaciones' => 'Tanque de almacenamiento de diesel',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+        ];
+
+        foreach ($tanques as $tanque) {
+            DB::table('tanques')->insert($tanque);
+        }
+    }
+}

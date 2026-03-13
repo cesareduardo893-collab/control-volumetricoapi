@@ -22,20 +22,19 @@ class UserSeeder extends Seeder
         $users = [
             [
                 'identificacion' => '1234567890',
-                'nombres' => 'Admin',
+                'nombres' => 'Administrador',
                 'apellidos' => 'Sistema',
-                'email' => 'admin@sistema.com',
+                'email' => 'admin@controlvolumetrico.com',
                 'telefono' => '0987654321',
                 'direccion' => 'Av. Principal 123',
-                'password' => Hash::make('password'),
-                'perfil' => 'administrador',
+                'password' => Hash::make('admin123'),
                 'login_attempts' => 0,
                 'last_login_at' => null,
                 'password_expires_at' => Carbon::now()->addDays(90),
                 'last_password_change' => Carbon::now(),
                 'force_password_change' => false,
                 'activo' => true,
-                'roles' => ['admin', 'supervisor'] // Roles a asignar
+                'roles' => ['Administrador']
             ],
             [
                 'identificacion' => '0987654321',
@@ -45,7 +44,6 @@ class UserSeeder extends Seeder
                 'telefono' => '0987654322',
                 'direccion' => 'Calle Secundaria 456',
                 'password' => Hash::make('password'),
-                'perfil' => 'usuario',
                 'login_attempts' => 0,
                 'last_login_at' => null,
                 'password_expires_at' => Carbon::now()->addDays(90),
@@ -62,7 +60,6 @@ class UserSeeder extends Seeder
                 'telefono' => '0987654323',
                 'direccion' => 'Av. Central 789',
                 'password' => Hash::make('password'),
-                'perfil' => 'supervisor',
                 'login_attempts' => 0,
                 'last_login_at' => null,
                 'password_expires_at' => Carbon::now()->addDays(90),

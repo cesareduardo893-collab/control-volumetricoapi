@@ -43,6 +43,14 @@ class Authenticate extends Middleware
      */
     protected function unauthenticated($request, array $guards)
     {
+        // For API requests, throw exception without redirect
+        if ($request->expectsJson()) {
+            throw new \Illuminate\Auth\AuthenticationException(
+                'Unauthenticated.', $guards, null
+            );
+        }
+        
+        // For web requests, try to redirect (but API backend shouldn't have web routes)
         throw new \Illuminate\Auth\AuthenticationException(
             'Unauthenticated.', $guards, $this->redirectTo($request)
         );
@@ -56,11 +64,7 @@ class Authenticate extends Middleware
      */
     protected function redirectTo($request)
     {
-        if (! $request->expectsJson()) {
-            return route('login');
-        }
-        
-        // Para APIs, retornamos null para que el middleware padre maneje la respuesta JSON
+        // API backend doesn't have web login routes
         return null;
     }
 }

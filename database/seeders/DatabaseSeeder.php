@@ -13,6 +13,16 @@ class DatabaseSeeder extends Seeder
             UpdateCatalogoSeeder::class,
             RoleSeeder::class,
             UserSeeder::class,
+            ContribuyenteSeeder::class,
+            InstalacionSeeder::class,
+            ProductoSeeder::class,
+            TanqueSeeder::class,
+            MedidorSeeder::class,
+            DispensarioSeeder::class,
+            MangueraSeeder::class,
+            ExistenciaSeeder::class,
+            BitacoraSeeder::class,
+            AlarmaSeeder::class,
         ]);
     }
 }

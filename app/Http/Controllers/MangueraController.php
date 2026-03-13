@@ -48,6 +48,67 @@ class MangueraController extends BaseController
     }
 
     /**
+     * Crear manguera
+     */
+    public function store(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'dispensario_id' => 'required|exists:dispensarios,id',
+            'clave' => 'required|string|max:255',
+            'descripcion' => 'nullable|string',
+            'medidor_id' => 'nullable|exists:medidores,id',
+            'estado' => 'required|in:OPERATIVO,MANTENIMIENTO,FUERA_SERVICIO',
+            'activo' => 'boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error('Error de validación', 422, $validator->errors());
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Validar que el medidor no esté asignado a otra manguera activa
+            if ($request->has('medidor_id') && $request->medidor_id) {
+                $medidorAsignado = Manguera::where('medidor_id', $request->medidor_id)
+                    ->where('activo', true)
+                    ->exists();
+                
+                if ($medidorAsignado) {
+                    return $this->error('El medidor ya está asignado a otra manguera', 422);
+                }
+            }
+
+            $manguera = Manguera::create([
+                'dispensario_id' => $request->dispensario_id,
+                'clave' => $request->clave,
+                'descripcion' => $request->descripcion,
+                'medidor_id' => $request->medidor_id,
+                'estado' => $request->estado,
+                'activo' => $request->boolean('activo', true),
+            ]);
+
+            $this->logActivity(
+                auth()->id(),
+                'configuracion',
+                'CREACION_MANGUERA',
+                'Configuración',
+                "Manguera creada: {$manguera->clave}",
+                'mangueras',
+                $manguera->id
+            );
+
+            DB::commit();
+
+            return $this->success($manguera, 'Manguera creada exitosamente', 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->error('Error al crear manguera: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * Mostrar manguera
      */
     public function show($id)
