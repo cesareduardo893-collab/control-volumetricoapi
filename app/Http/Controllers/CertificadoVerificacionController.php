@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\CertificadoVerificacion;
 use App\Models\Contribuyente;
 use Illuminate\Http\Request;
@@ -68,8 +69,8 @@ class CertificadoVerificacionController extends BaseController
             'proveedor_rfc' => 'required|string|size:13',
             'proveedor_nombre' => 'required|string|max:255',
             'fecha_emision' => 'required|date',
-            'fecha_inicio_verificacion' => 'required|date|before_or_equal:fecha_emision',
-            'fecha_fin_verificacion' => 'required|date|after_or_equal:fecha_inicio_verificacion|before_or_equal:fecha_emision',
+            'fecha_inicio_verificacion' => 'required|date|after_or_equal:fecha_emision',
+            'fecha_fin_verificacion' => 'required|date|after_or_equal:fecha_inicio_verificacion',
             'resultado' => 'required|in:acreditado,no_acreditado',
             'tabla_cumplimiento' => 'required|array',
             'hallazgos' => 'nullable|array',
@@ -117,7 +118,7 @@ class CertificadoVerificacionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'verificacion',
+                Bitacora::TIPO_EVENTO_VERIFICACIONES,
                 'CREACION_CERTIFICADO_VERIFICACION',
                 'Verificación',
                 "Certificado de verificación creado: {$certificado->folio}",
@@ -187,7 +188,7 @@ class CertificadoVerificacionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'verificacion',
+                Bitacora::TIPO_EVENTO_VERIFICACIONES,
                 'ACTUALIZACION_CERTIFICADO_VERIFICACION',
                 'Verificación',
                 "Certificado de verificación actualizado: {$certificado->folio}",
