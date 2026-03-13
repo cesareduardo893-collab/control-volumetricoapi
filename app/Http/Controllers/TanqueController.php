@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Tanque;
 use App\Models\Instalacion;
 use App\Models\Producto;
-use App\Models\HistorialCalibracion;
+use App\Models\Bitacora as BitacoraLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -156,7 +157,7 @@ class TanqueController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_TANQUE',
                 'Configuración',
                 "Tanque creado: {$tanque->identificador}",
@@ -253,7 +254,7 @@ class TanqueController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_TANQUE',
                 'Configuración',
                 "Tanque actualizado: {$tanque->identificador}",
@@ -300,7 +301,7 @@ class TanqueController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ELIMINACION_TANQUE',
                 'Configuración',
                 "Tanque eliminado: {$tanque->identificador}",
@@ -375,7 +376,7 @@ class TanqueController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'mantenimiento',
+                Bitacora::TIPO_EVENTO_OPERACIONES,
                 'CALIBRACION_TANQUE',
                 'Mantenimiento',
                 "Calibración registrada para tanque {$tanque->identificador}",
@@ -513,7 +514,7 @@ class TanqueController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'operacion',
+                Bitacora::TIPO_EVENTO_OPERACIONES,
                 'CAMBIO_PRODUCTO_TANQUE',
                 'Operación',
                 "Cambio de producto en tanque {$tanque->identificador}",

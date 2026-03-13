@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Instalacion;
 use App\Models\Contribuyente;
 use App\Models\Tanque;
@@ -125,7 +126,7 @@ class InstalacionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_INSTALACION',
                 'Configuración',
                 "Instalación creada: {$instalacion->clave_instalacion} - {$instalacion->nombre}",
@@ -221,7 +222,7 @@ class InstalacionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_INSTALACION',
                 'Configuración',
                 "Instalación actualizada: {$instalacion->clave_instalacion}",
@@ -274,7 +275,7 @@ class InstalacionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ELIMINACION_INSTALACION',
                 'Configuración',
                 "Instalación eliminada: {$instalacion->clave_instalacion}",

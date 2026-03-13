@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Manguera;
 use App\Models\Dispensario;
 use App\Models\Medidor;
@@ -90,7 +91,7 @@ class MangueraController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_MANGUERA',
                 'Configuración',
                 "Manguera creada: {$manguera->clave}",
@@ -167,7 +168,7 @@ class MangueraController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_MANGUERA',
                 'Configuración',
                 "Manguera actualizada: {$manguera->clave}",
@@ -208,7 +209,7 @@ class MangueraController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ELIMINACION_MANGUERA',
                 'Configuración',
                 "Manguera eliminada: {$manguera->clave}",
@@ -264,7 +265,7 @@ class MangueraController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ASIGNACION_MEDIDOR_MANGUERA',
                 'Configuración',
                 "Medidor asignado a manguera {$manguera->clave}",
@@ -304,7 +305,7 @@ class MangueraController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'QUITAR_MEDIDOR_MANGUERA',
                 'Configuración',
                 "Medidor quitado de manguera {$manguera->clave}",

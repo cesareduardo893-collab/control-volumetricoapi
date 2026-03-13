@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Dictamen;
 use App\Models\Contribuyente;
 use App\Models\Instalacion;
@@ -189,7 +190,7 @@ class DictamenController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'calidad',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_DICTAMEN',
                 'Calidad',
                 "Dictamen creado: {$dictamen->folio}",
@@ -261,7 +262,7 @@ class DictamenController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'calidad',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_DICTAMEN',
                 'Calidad',
                 "Dictamen actualizado: {$dictamen->folio}",
@@ -315,7 +316,7 @@ class DictamenController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'calidad',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CANCELACION_DICTAMEN',
                 'Calidad',
                 "Dictamen cancelado: {$dictamen->folio}",

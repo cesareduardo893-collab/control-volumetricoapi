@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Pedimento;
 use App\Models\Contribuyente;
 use App\Models\Producto;
@@ -126,7 +127,7 @@ class PedimentoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'comercio_exterior',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_PEDIMENTO',
                 'Comercio Exterior',
                 "Pedimento creado: {$pedimento->numero_pedimento}",
@@ -194,7 +195,7 @@ class PedimentoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'comercio_exterior',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_PEDIMENTO',
                 'Comercio Exterior',
                 "Pedimento actualizado: {$pedimento->numero_pedimento}",
@@ -256,7 +257,7 @@ class PedimentoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'comercio_exterior',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CANCELACION_PEDIMENTO',
                 'Comercio Exterior',
                 "Pedimento cancelado: {$pedimento->numero_pedimento}",
@@ -310,7 +311,7 @@ class PedimentoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'comercio_exterior',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'UTILIZACION_PEDIMENTO',
                 'Comercio Exterior',
                 "Pedimento utilizado: {$pedimento->numero_pedimento}",

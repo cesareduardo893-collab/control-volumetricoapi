@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Dispensario;
 use App\Models\Instalacion;
 use Illuminate\Http\Request;
@@ -90,7 +91,7 @@ class DispensarioController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_DISPENSARIO',
                 'Configuración',
                 "Dispensario creado: {$dispensario->clave}",
@@ -159,7 +160,7 @@ class DispensarioController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_DISPENSARIO',
                 'Configuración',
                 "Dispensario actualizado: {$dispensario->clave}",
@@ -206,7 +207,7 @@ class DispensarioController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ELIMINACION_DISPENSARIO',
                 'Configuración',
                 "Dispensario eliminado: {$dispensario->clave}",

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\ReporteSat;
 use App\Models\Instalacion;
 use App\Models\User;
@@ -127,11 +128,11 @@ class ReporteSatController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_REPORTE_SAT',
                 'Reportes SAT',
                 "Reporte SAT creado: {$reporte->folio}",
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 $reporte->id
             );
 
@@ -205,11 +206,11 @@ class ReporteSatController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_REPORTE_SAT',
                 'Reportes SAT',
                 "Reporte SAT actualizado: {$reporte->folio}",
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 $reporte->id,
                 $datosAnteriores,
                 $reporte->toArray()
@@ -258,11 +259,11 @@ class ReporteSatController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ENVIO_REPORTE_SAT',
                 'Reportes SAT',
                 "Reporte SAT enviado: {$reporte->folio}",
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 $reporte->id,
                 $datosAnteriores,
                 $reporte->toArray()
@@ -318,11 +319,11 @@ class ReporteSatController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'FIRMA_REPORTE_SAT',
                 'Reportes SAT',
                 "Reporte SAT firmado: {$reporte->folio}",
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 $reporte->id,
                 $datosAnteriores,
                 $reporte->toArray()
@@ -377,11 +378,11 @@ class ReporteSatController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CANCELACION_REPORTE_SAT',
                 'Reportes SAT',
                 "Reporte SAT cancelado: {$reporte->folio}",
-                'reportes_sat',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 $reporte->id,
                 $datosAnteriores,
                 $reporte->toArray()

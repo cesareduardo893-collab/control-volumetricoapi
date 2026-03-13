@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Medidor;
 use App\Models\Instalacion;
 use App\Models\Tanque;
@@ -177,7 +178,7 @@ class MedidorController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_MEDIDOR',
                 'Configuración',
                 "Medidor creado: {$medidor->numero_serie} - {$medidor->clave}",
@@ -280,7 +281,7 @@ class MedidorController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_MEDIDOR',
                 'Configuración',
                 "Medidor actualizado: {$medidor->numero_serie}",
@@ -321,7 +322,7 @@ class MedidorController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'configuracion',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ELIMINACION_MEDIDOR',
                 'Configuración',
                 "Medidor eliminado: {$medidor->numero_serie}",
@@ -396,7 +397,7 @@ class MedidorController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'mantenimiento',
+                Bitacora::TIPO_EVENTO_OPERACIONES,
                 'CALIBRACION_MEDIDOR',
                 'Mantenimiento',
                 "Calibración registrada para medidor {$medidor->numero_serie}",

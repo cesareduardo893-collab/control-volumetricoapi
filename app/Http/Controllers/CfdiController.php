@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Cfdi;
 use App\Models\Producto;
 use Illuminate\Http\Request;
@@ -131,7 +132,7 @@ class CfdiController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'fiscal',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_CFDI',
                 'Fiscal',
                 "CFDI creado: {$cfdi->uuid}",
@@ -211,7 +212,7 @@ class CfdiController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'fiscal',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CANCELACION_CFDI',
                 'Fiscal',
                 "CFDI cancelado: {$cfdi->uuid}",

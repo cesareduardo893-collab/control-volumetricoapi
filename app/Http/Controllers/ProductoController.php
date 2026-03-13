@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Producto;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -128,7 +129,7 @@ class ProductoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'catalogos',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_PRODUCTO',
                 'Catálogos',
                 "Producto creado: {$producto->clave_sat} - {$producto->nombre}",
@@ -212,7 +213,7 @@ class ProductoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'catalogos',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_PRODUCTO',
                 'Catálogos',
                 "Producto actualizado: {$producto->clave_sat}",
@@ -258,7 +259,7 @@ class ProductoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'catalogos',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ELIMINACION_PRODUCTO',
                 'Catálogos',
                 "Producto eliminado: {$producto->clave_sat}",
