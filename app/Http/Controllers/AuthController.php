@@ -101,7 +101,7 @@ class AuthController extends BaseController
             Bitacora::create([
                 'numero_registro' => $numeroRegistro,
                 'usuario_id' => $user->id,
-                'tipo_evento' => 'seguridad',
+                'tipo_evento' => Bitacora::TIPO_EVENTO_SEGURIDAD,
                 'subtipo_evento' => 'LOGIN',
                 'modulo' => 'Autenticación',
                 'descripcion' => 'Inicio de sesión exitoso',
@@ -171,7 +171,7 @@ class AuthController extends BaseController
                 Bitacora::create([
                     'numero_registro' => $numeroRegistro,
                     'usuario_id' => $user->id,
-                    'tipo_evento' => 'seguridad',
+                    'tipo_evento' => Bitacora::TIPO_EVENTO_SEGURIDAD,
                     'subtipo_evento' => 'LOGOUT',
                     'modulo' => 'Autenticación',
                     'descripcion' => 'Cierre de sesión',
@@ -256,7 +256,7 @@ class AuthController extends BaseController
         Bitacora::create([
             'numero_registro' => $numeroRegistro,
             'usuario_id' => $user?->id,
-            'tipo_evento' => 'seguridad',
+            'tipo_evento' => Bitacora::TIPO_EVENTO_SEGURIDAD,
             'subtipo_evento' => 'LOGIN_FAILED',
             'modulo' => 'Autenticación',
             'tabla' => 'users',
@@ -317,7 +317,7 @@ class AuthController extends BaseController
             Bitacora::create([
                 'numero_registro' => $numeroRegistro,
                 'usuario_id' => $user->id,
-                'tipo_evento' => 'administracion_sistema',
+                'tipo_evento' => Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'subtipo_evento' => 'REGISTRO_USUARIO',
                 'modulo' => 'Autenticación',
                 'tabla' => 'users',

@@ -6,6 +6,7 @@ use App\Models\Alarma;
 use App\Models\User;
 use App\Models\CatalogoValor;
 use Illuminate\Http\Request;
+use App\Models\Bitacora;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -130,7 +131,7 @@ class AlarmaController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
+                Bitacora::TIPO_EVENTO_SEGURIDAD,
                 'CREACION_ALARMA',
                 'Alarmas',
                 "Alarma creada: {$alarma->numero_registro}",
@@ -217,7 +218,7 @@ class AlarmaController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
+                Bitacora::TIPO_EVENTO_SEGURIDAD,
                 'ATENCION_ALARMA',
                 'Alarmas',
                 "Alarma atendida: {$alarma->numero_registro}",
@@ -283,7 +284,7 @@ class AlarmaController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
+                Bitacora::TIPO_EVENTO_SEGURIDAD,
                 'CAMBIO_ESTADO_ALARMA',
                 'Alarmas',
                 "Estado de alarma actualizado: {$alarma->numero_registro} -> {$request->estado_atencion}",

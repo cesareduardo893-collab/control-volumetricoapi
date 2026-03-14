@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Role;
 use App\Models\Permission;
 use Illuminate\Http\Request;
@@ -90,7 +91,7 @@ class RoleController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_ROL',
                 'Administración',
                 "Rol creado: {$rol->nombre}",
@@ -192,7 +193,7 @@ class RoleController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_ROL',
                 'Administración',
                 "Rol actualizado: {$rol->nombre}",
@@ -242,7 +243,7 @@ class RoleController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ELIMINACION_ROL',
                 'Administración',
                 "Rol eliminado: {$rol->nombre}",
@@ -311,7 +312,7 @@ class RoleController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ASIGNACION_PERMISOS_ROL',
                 'Administración',
                 "Permisos asignados al rol {$rol->nombre}",
@@ -428,7 +429,7 @@ class RoleController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CLONACION_ROL',
                 'Administración',
                 "Rol clonado: {$rolOriginal->nombre} -> {$nuevoRol->nombre}",

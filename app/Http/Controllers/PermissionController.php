@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Permission;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -73,7 +74,7 @@ class PermissionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_PERMISO',
                 'Administración',
                 "Permiso creado: {$permiso->slug}",
@@ -139,7 +140,7 @@ class PermissionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_PERMISO',
                 'Administración',
                 "Permiso actualizado: {$permiso->slug}",
@@ -189,7 +190,7 @@ class PermissionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ELIMINACION_PERMISO',
                 'Administración',
                 "Permiso eliminado: {$permiso->slug}",
@@ -296,7 +297,7 @@ class PermissionController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'SINCRONIZACION_PERMISOS',
                 'Administración',
                 "Sincronización completada. Creados: " . count($resultados['creados']) . ", Actualizados: " . count($resultados['actualizados']),

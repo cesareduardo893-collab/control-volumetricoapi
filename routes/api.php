@@ -40,6 +40,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('user', [AuthController::class, 'user']);
     
+    // ==================== EXPORTAR E IMPORTAR ====================
+    // Route::get('exportar/{modulo}', [ExportarImportarController::class, 'exportar']);
+    // Route::post('importar/{modulo}', [ExportarImportarController::class, 'importar']);
+    
     // ==================== DASHBOARD ====================
     Route::get('dashboard/resumen', [DashboardController::class, 'resumen']);
     Route::get('dashboard/tiempo-real', [DashboardController::class, 'tiempoReal']);

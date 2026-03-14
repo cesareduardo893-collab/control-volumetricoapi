@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bitacora;
 use App\Models\Contribuyente;
 use App\Models\User;
 use App\Models\Instalacion;
@@ -113,7 +114,7 @@ class ContribuyenteController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_CONTRIBUYENTE',
                 'Contribuyentes',
                 "Contribuyente creado: {$contribuyente->rfc} - {$contribuyente->razon_social}",
@@ -204,7 +205,7 @@ class ContribuyenteController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_CONTRIBUYENTE',
                 'Contribuyentes',
                 "Contribuyente actualizado: {$contribuyente->rfc}",
@@ -253,7 +254,7 @@ class ContribuyenteController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ELIMINACION_CONTRIBUYENTE',
                 'Contribuyentes',
                 "Contribuyente eliminado: {$contribuyente->rfc}",

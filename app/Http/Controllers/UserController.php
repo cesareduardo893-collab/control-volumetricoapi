@@ -116,7 +116,7 @@ class UserController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'CREACION_USUARIO',
                 'Administración',
                 "Usuario creado: {$user->email}",
@@ -217,7 +217,7 @@ class UserController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'administracion_sistema',
+                Bitacora::TIPO_EVENTO_ADMINISTRACION,
                 'ACTUALIZACION_USUARIO',
                 'Administración',
                 "Usuario actualizado: {$user->email}",
@@ -280,7 +280,7 @@ class UserController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
+                Bitacora::TIPO_EVENTO_SEGURIDAD,
                 'CAMBIO_PASSWORD',
                 'Seguridad',
                 "Contraseña cambiada para usuario: {$user->email}",
@@ -347,7 +347,7 @@ class UserController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
+                Bitacora::TIPO_EVENTO_SEGURIDAD,
                 'BLOQUEO_USUARIO',
                 'Seguridad',
                 "Usuario bloqueado: {$user->email} - Motivo: {$request->motivo}",
@@ -407,7 +407,7 @@ class UserController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
+                Bitacora::TIPO_EVENTO_SEGURIDAD,
                 'DESBLOQUEO_USUARIO',
                 'Seguridad',
                 "Usuario desbloqueado: {$user->email} - Motivo: {$request->motivo}",
@@ -480,7 +480,7 @@ class UserController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
+                Bitacora::TIPO_EVENTO_SEGURIDAD,
                 'ASIGNACION_ROL',
                 'Seguridad',
                 "Rol {$rol->nombre} asignado a usuario {$user->email}",
@@ -538,7 +538,7 @@ class UserController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'seguridad',
+                Bitacora::TIPO_EVENTO_SEGURIDAD,
                 'REVOCACION_ROL',
                 'Seguridad',
                 "Rol {$rol->nombre} revocado de usuario {$user->email}",

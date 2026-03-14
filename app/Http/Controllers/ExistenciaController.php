@@ -7,6 +7,7 @@ use App\Models\Tanque;
 use App\Models\Producto;
 use App\Models\Alarma;
 use App\Models\MovimientoDia;
+use App\Models\Bitacora;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -190,7 +191,7 @@ class ExistenciaController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'operaciones_cotidianas',
+                Bitacora::TIPO_EVENTO_OPERACIONES,
                 'CREACION_EXISTENCIA',
                 'Inventarios',
                 "Existencia creada: {$existencia->numero_registro}",
@@ -275,7 +276,7 @@ class ExistenciaController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'operaciones_cotidianas',
+                Bitacora::TIPO_EVENTO_OPERACIONES,
                 'VALIDACION_EXISTENCIA',
                 'Inventarios',
                 "Existencia validada: {$existencia->numero_registro}",

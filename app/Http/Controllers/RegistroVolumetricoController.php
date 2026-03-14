@@ -8,6 +8,7 @@ use App\Models\Tanque;
 use App\Models\Medidor;
 use App\Models\Producto;
 use App\Models\Alarma;
+use App\Models\Bitacora;
 use App\Models\Dictamen;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -210,7 +211,7 @@ class RegistroVolumetricoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'operaciones_cotidianas',
+                Bitacora::TIPO_EVENTO_OPERACIONES,
                 'CREACION_REGISTRO_VOLUMETRICO',
                 'Registros Volumétricos',
                 "Registro volumétrico creado: {$registro->numero_registro}",
@@ -295,7 +296,7 @@ class RegistroVolumetricoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'operaciones_cotidianas',
+                Bitacora::TIPO_EVENTO_OPERACIONES,
                 'VALIDACION_REGISTRO_VOLUMETRICO',
                 'Registros Volumétricos',
                 "Registro volumétrico validado: {$registro->numero_registro}",
@@ -358,7 +359,7 @@ class RegistroVolumetricoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'operaciones_cotidianas',
+                Bitacora::TIPO_EVENTO_OPERACIONES,
                 'CANCELACION_REGISTRO_VOLUMETRICO',
                 'Registros Volumétricos',
                 "Registro volumétrico cancelado: {$registro->numero_registro}",
@@ -519,7 +520,7 @@ class RegistroVolumetricoController extends BaseController
 
             $this->logActivity(
                 auth()->id(),
-                'operaciones_cotidianas',
+                Bitacora::TIPO_EVENTO_OPERACIONES,
                 'ASOCIACION_DICTAMEN',
                 'Registros Volumétricos',
                 "Dictamen asociado a registro {$registro->numero_registro}",
