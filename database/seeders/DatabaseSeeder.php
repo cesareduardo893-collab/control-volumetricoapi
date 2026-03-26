@@ -12,6 +12,8 @@ class DatabaseSeeder extends Seeder
             CatalogoSeeder::class,
             UpdateCatalogoSeeder::class,
             RoleSeeder::class,
+            PermissionSeeder::class,
+            AdminGoogleUserSeeder::class,
             UserSeeder::class,
             ContribuyenteSeeder::class,
             InstalacionSeeder::class,

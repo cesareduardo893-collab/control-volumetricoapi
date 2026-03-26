@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\PermissionController;
@@ -32,6 +33,11 @@ use App\Http\Controllers\DashboardController;
 // Rutas públicas
 Route::post('login', [AuthController::class, 'login']);
 Route::post('register', [AuthController::class, 'register']);
+
+// Google OAuth (en web.php para soporte de sesión)
+// Route::get('auth/google/redirect', [GoogleAuthController::class, 'redirectToGoogle']);
+// Route::get('auth/google/callback', [GoogleAuthController::class, 'handleGoogleCallback']);
+Route::post('auth/google/signin', [GoogleAuthController::class, 'handleGoogleSignIn']);
 
 // Rutas protegidas con sanctum
 Route::middleware('auth:sanctum')->group(function () {
@@ -78,6 +84,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('contribuyentes/{id}/instalaciones', [ContribuyenteController::class, 'instalaciones']);
     Route::get('contribuyentes/{id}/cumplimiento', [ContribuyenteController::class, 'cumplimiento']);
     Route::get('catalogo/contribuyentes', [ContribuyenteController::class, 'catalogo']);
+    Route::get('contribuyentes/search', [ContribuyenteController::class, 'search']);
     
     // ==================== INSTALACIONES ====================
     Route::apiResource('instalaciones', InstalacionController::class);
@@ -85,6 +92,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('instalaciones/{id}/medidores', [InstalacionController::class, 'medidores']);
     Route::get('instalaciones/{id}/dispensarios', [InstalacionController::class, 'dispensarios']);
     Route::get('instalaciones/{id}/resumen-operativo', [InstalacionController::class, 'resumenOperativo']);
+    Route::get('instalaciones/search', [InstalacionController::class, 'search']);
     
     // ==================== TANQUES ====================
     Route::apiResource('tanques', TanqueController::class);
@@ -116,6 +124,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('productos/tipo/{tipo}', [ProductoController::class, 'porTipo']);
     Route::get('catalogo/productos', [ProductoController::class, 'catalogo']);
     Route::get('productos/clave-sat/{claveSat}', [ProductoController::class, 'buscarPorClaveSat']);
+    Route::get('productos/search', [ProductoController::class, 'search']);
     
     // ==================== DICTÁMENES ====================
     Route::apiResource('dictamenes', DictamenController::class);

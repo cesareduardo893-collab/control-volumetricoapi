@@ -490,4 +490,38 @@ class InstalacionController extends BaseController
             ],
         ];
     }
+
+    /**
+     * Buscar instalaciones para autocompletado
+     */
+    public function search(Request $request)
+    {
+        $search = $request->get('search', '');
+        $contribuyenteId = $request->get('contribuyente_id');
+        
+        if (strlen($search) < 2 && !$contribuyenteId) {
+            return $this->success([], 'Escriba al menos 2 caracteres o seleccione un contribuyente');
+        }
+
+        $query = Instalacion::where('activo', true);
+        
+        if ($contribuyenteId) {
+            $query->where('contribuyente_id', $contribuyenteId);
+        }
+        
+        if (strlen($search) >= 2) {
+            $query->where(function ($q) use ($search) {
+                $q->where('nombre', 'LIKE', "%{$search}%")
+                  ->orWhere('clave_instalacion', 'LIKE', "%{$search}%");
+            });
+        }
+        
+        $instalaciones = $query
+            ->select('id', 'clave_instalacion', 'nombre', 'domicilio', 'contribuyente_id')
+            ->orderBy('nombre')
+            ->limit(15)
+            ->get();
+
+        return $this->success($instalaciones, 'Resultados de búsqueda');
+    }
 }

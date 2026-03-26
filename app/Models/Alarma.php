@@ -68,9 +68,27 @@ class Alarma extends Model
 
         static::creating(function ($model) {
             if (empty($model->numero_registro)) {
-                $model->numero_registro = 'AL-' . Str::uuid();
+                $model->numero_registro = self::generarNumeroRegistroSecuencial();
             }
         });
+    }
+
+    /**
+     * Generar número de registro secuencial automático
+     */
+    public static function generarNumeroRegistroSecuencial(): string
+    {
+        $ultimoNumero = self::where('numero_registro', 'like', 'AL-%')
+            ->orderBy('id', 'desc')
+            ->value('numero_registro');
+
+        if ($ultimoNumero) {
+            $numero = intval(str_replace('AL-', '', $ultimoNumero)) + 1;
+        } else {
+            $numero = 1;
+        }
+
+        return 'AL-' . str_pad($numero, 6, '0', STR_PAD_LEFT);
     }
 
     public function atendidaPor()

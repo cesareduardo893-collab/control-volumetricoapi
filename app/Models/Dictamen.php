@@ -108,12 +108,30 @@ class Dictamen extends Model
 
         static::creating(function ($model) {
             if (empty($model->folio)) {
-                $model->folio = 'DIC-' . Str::uuid();
+                $model->folio = self::generarFolioSecuencial();
             }
             if (empty($model->numero_lote)) {
-                $model->numero_lote = 'LOTE-' . Str::uuid();
+                $model->numero_lote = 'LOTE-' . self::generarFolioSecuencial();
             }
         });
+    }
+
+    /**
+     * Generar folio secuencial automático
+     */
+    public static function generarFolioSecuencial(): string
+    {
+        $ultimoFolio = self::where('folio', 'like', 'DIC-%')
+            ->orderBy('id', 'desc')
+            ->value('folio');
+
+        if ($ultimoFolio) {
+            $numero = intval(str_replace('DIC-', '', $ultimoFolio)) + 1;
+        } else {
+            $numero = 1;
+        }
+
+        return 'DIC-' . str_pad($numero, 5, '0', STR_PAD_LEFT);
     }
 
     public function contribuyente()

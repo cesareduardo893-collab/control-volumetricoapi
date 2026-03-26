@@ -404,4 +404,29 @@ class ContribuyenteController extends BaseController
 
         return $this->success($contribuyentes, 'Catálogo de contribuyentes obtenido exitosamente');
     }
+
+    /**
+     * Buscar contribuyentes para autocompletado
+     */
+    public function search(Request $request)
+    {
+        $search = $request->get('search', '');
+        
+        if (strlen($search) < 2) {
+            return $this->success([], 'Escriba al menos 2 caracteres');
+        }
+
+        $contribuyentes = Contribuyente::where('activo', true)
+            ->where(function ($query) use ($search) {
+                $query->where('razon_social', 'LIKE', "%{$search}%")
+                      ->orWhere('rfc', 'LIKE', "%{$search}%")
+                      ->orWhere('nombre_comercial', 'LIKE', "%{$search}%");
+            })
+            ->select('id', 'rfc', 'razon_social', 'nombre_comercial', 'telefono', 'email', 'domicilio_fiscal')
+            ->orderBy('razon_social')
+            ->limit(15)
+            ->get();
+
+        return $this->success($contribuyentes, 'Resultados de búsqueda');
+    }
 }

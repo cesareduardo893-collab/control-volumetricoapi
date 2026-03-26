@@ -9,7 +9,13 @@ use App\Models\Existencia;
 use App\Models\MovimientoDia;
 use App\Models\Producto;
 use App\Models\RegistroVolumetrico;
+use App\Models\Tanque;
+use App\Models\Medidor;
+use App\Models\Dispensario;
+use App\Models\Manguera;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
@@ -19,8 +25,11 @@ class DashboardController extends Controller
      */
     public function resumen()
     {
+        // Conteos principales
+        $contribuyentesTotal = Contribuyente::withTrashed()->count();
         $contribuyentesActivos = Contribuyente::where('activo', true)->count();
         
+        $instalacionesTotal = Instalacion::withTrashed()->count();
         $instalacionesActivas = Instalacion::where('activo', true)
             ->where('estatus', 'OPERACION')
             ->count();
@@ -29,29 +38,74 @@ class DashboardController extends Controller
             ->whereNull('fecha_atencion')
             ->count();
         
-        $volumenTotal = Existencia::sum('volumen_disponible') ?? 0;
+        $volumenTotal = DB::table('existencias')->sum('volumen_disponible') ?? 0;
         
+        // Conteos de infraestructura
+        $tanquesTotal = Tanque::withTrashed()->count();
+        $tanquesOperando = Tanque::where('estado', 'OPERACION')->count();
+        
+        $medidoresTotal = Medidor::withTrashed()->count();
+        $medidoresOperando = Medidor::where('estado', 'OPERACION')->count();
+        
+        $dispensariosTotal = Dispensario::withTrashed()->count();
+        $dispensariosOperando = Dispensario::where('estado', 'OPERACION')->count();
+        
+        $manguerasTotal = Manguera::withTrashed()->count();
+        $manguerasOperando = Manguera::where('estado', 'OPERACION')->count();
+        
+        // Registros del día
+        $hoy = Carbon::today()->format('Y-m-d');
+        $registrosHoy = RegistroVolumetrico::where('fecha', $hoy)->count();
+        
+        // Usuarios
+        $usuariosTotal = User::withTrashed()->count();
+        $usuariosActivos = User::where('activo', true)->count();
+        
+        // Últimos movimientos
         $ultimosMovimientos = RegistroVolumetrico::with(['instalacion', 'producto'])
-            ->orderBy('fecha_movimiento', 'desc')
+            ->orderBy('fecha', 'desc')
+            ->orderBy('hora_inicio', 'desc')
             ->limit(20)
             ->get()
             ->map(function ($mov) {
                 return [
                     'id' => $mov->id,
-                    'fecha_movimiento' => $mov->fecha_movimiento,
+                    'fecha_movimiento' => $mov->fecha ? $mov->fecha->format('d/m/Y') . ' ' . ($mov->hora_inicio ?? '') : 'N/A',
                     'instalacion' => $mov->instalacion ? $mov->instalacion->nombre : 'N/A',
                     'producto' => $mov->producto ? $mov->producto->nombre : 'N/A',
-                    'tipo_movimiento' => $mov->tipo_movimiento,
-                    'volumen_neto' => $mov->volumen_neto ?? 0,
+                    'tipo_movimiento' => $mov->tipo_registro ?? $mov->operacion,
+                    'volumen_neto' => $mov->volumen_operacion ?? $mov->volumen_corregido ?? 0,
                     'estado' => $mov->estado,
                 ];
             });
 
         $data = [
+            // Tarjetas principales
             'contribuyentes_activos' => $contribuyentesActivos,
+            'contribuyentes_total' => $contribuyentesTotal,
             'instalaciones_activas' => $instalacionesActivas,
+            'instalaciones_total' => $instalacionesTotal,
             'alarmas_activas' => $alarmasActivas,
             'volumen_total' => floatval($volumenTotal),
+            
+            // Infraestructura
+            'tanques_total' => $tanquesTotal,
+            'tanques_operando' => $tanquesOperando,
+            'medidores_total' => $medidoresTotal,
+            'medidores_operando' => $medidoresOperando,
+            'dispensarios_total' => $dispensariosTotal,
+            'dispensarios_operando' => $dispensariosOperando,
+            'mangueras_total' => $manguerasTotal,
+            'mangueras_operando' => $manguerasOperando,
+            
+            // Registros
+            'registros_hoy' => $registrosHoy,
+            
+            // Usuarios
+            'usuarios_total' => $usuariosTotal,
+            'usuarios_activos' => $usuariosActivos,
+            
+            // Movimientos
             'ultimos_movimientos' => $ultimosMovimientos,
         ];
 
@@ -95,13 +149,13 @@ class DashboardController extends Controller
     public function graficaMovimientos(Request $request)
     {
         $dias = $request->get('dias', 7);
-        $fechaInicio = Carbon::now()->subDays($dias);
+        $fechaInicio = Carbon::now()->subDays($dias)->format('Y-m-d');
         
-        $movimientos = MovimientoDia::whereDate('created_at', '>=', $fechaInicio)
-            ->orderBy('created_at')
+        $movimientos = RegistroVolumetrico::where('fecha', '>=', $fechaInicio)
+            ->orderBy('fecha')
             ->get()
             ->groupBy(function ($item) {
-                return Carbon::parse($item->created_at)->format('Y-m-d');
+                return $item->fecha ? $item->fecha->format('Y-m-d') : '';
             });
 
         $labels = [];
@@ -113,9 +167,8 @@ class DashboardController extends Controller
             $labels[] = Carbon::parse($fecha)->format('d/m');
             
             $data = $movimientos->get($fecha);
-            // Sumar volumen por tipo de movimiento
-            $entradasTemp = $data ? $data->whereIn('tipo_movimiento', ['RECEPCION', 'INICIAL'])->sum('volumen') : 0;
-            $salidasTemp = $data ? $data->whereIn('tipo_movimiento', ['VENTA', 'ENTREGA'])->sum('volumen') : 0;
+            $entradasTemp = $data ? $data->whereIn('tipo_registro', ['RECEPCION', 'ENTRADA'])->sum('volumen_operacion') : 0;
+            $salidasTemp = $data ? $data->whereIn('tipo_registro', ['VENTA', 'ENTREGA', 'SALIDA'])->sum('volumen_operacion') : 0;
             
             $entradas[] = floatval($entradasTemp);
             $salidas[] = floatval($salidasTemp);
@@ -145,21 +198,10 @@ class DashboardController extends Controller
 
         $labels = [];
         $valores = [];
-        $colores = [
-            'rgba(255, 99, 132, 0.8)',
-            'rgba(54, 162, 235, 0.8)',
-            'rgba(255, 206, 86, 0.8)',
-            'rgba(75, 192, 192, 0.8)',
-            'rgba(153, 102, 255, 0.8)',
-            'rgba(255, 159, 64, 0.8)',
-        ];
 
-        $i = 0;
         foreach ($existencias as $nombre => $items) {
             $labels[] = $nombre;
             $valores[] = floatval($items->sum('volumen_disponible'));
-            $i++;
-            if ($i >= count($colores)) $i = 0;
         }
 
         return response()->json([
@@ -167,7 +209,6 @@ class DashboardController extends Controller
             'data' => [
                 'labels' => $labels,
                 'valores' => $valores,
-                'colores' => array_slice($colores, 0, count($labels)),
             ],
         ]);
     }

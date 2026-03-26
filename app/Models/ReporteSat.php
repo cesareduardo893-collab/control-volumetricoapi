@@ -69,9 +69,27 @@ class ReporteSat extends Model
 
         static::creating(function ($model) {
             if (empty($model->folio)) {
-                $model->folio = 'RPT-' . Str::uuid();
+                $model->folio = self::generarFolioSecuencial();
             }
         });
+    }
+
+    /**
+     * Generar folio secuencial automático
+     */
+    public static function generarFolioSecuencial(): string
+    {
+        $ultimoFolio = self::where('folio', 'like', 'RPT-%')
+            ->orderBy('id', 'desc')
+            ->value('folio');
+
+        if ($ultimoFolio) {
+            $numero = intval(str_replace('RPT-', '', $ultimoFolio)) + 1;
+        } else {
+            $numero = 1;
+        }
+
+        return 'RPT-' . str_pad($numero, 5, '0', STR_PAD_LEFT);
     }
 
     public function instalacion()

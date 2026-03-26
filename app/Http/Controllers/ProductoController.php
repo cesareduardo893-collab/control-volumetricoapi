@@ -326,4 +326,29 @@ class ProductoController extends BaseController
 
         return $this->success($producto, 'Producto encontrado exitosamente');
     }
+
+    /**
+     * Buscar productos para autocompletado
+     */
+    public function search(Request $request)
+    {
+        $search = $request->get('search', '');
+        
+        if (strlen($search) < 2) {
+            return $this->success([], 'Escriba al menos 2 caracteres');
+        }
+
+        $productos = Producto::where('activo', true)
+            ->where(function ($query) use ($search) {
+                $query->where('nombre', 'LIKE', "%{$search}%")
+                      ->orWhere('clave_sat', 'LIKE', "%{$search}%")
+                      ->orWhere('codigo', 'LIKE', "%{$search}%");
+            })
+            ->select('id', 'clave_sat', 'codigo', 'nombre', 'tipo_hidrocarburo', 'unidad_medida', 'densidad')
+            ->orderBy('nombre')
+            ->limit(15)
+            ->get();
+
+        return $this->success($productos, 'Resultados de búsqueda');
+    }
 }

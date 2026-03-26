@@ -58,9 +58,27 @@ class CertificadoVerificacion extends Model
 
         static::creating(function ($model) {
             if (empty($model->folio)) {
-                $model->folio = 'CERT-' . Str::uuid();
+                $model->folio = self::generarFolioSecuencial();
             }
         });
+    }
+
+    /**
+     * Generar folio secuencial automático
+     */
+    public static function generarFolioSecuencial(): string
+    {
+        $ultimoFolio = self::where('folio', 'like', 'CERT-%')
+            ->orderBy('id', 'desc')
+            ->value('folio');
+
+        if ($ultimoFolio) {
+            $numero = intval(str_replace('CERT-', '', $ultimoFolio)) + 1;
+        } else {
+            $numero = 1;
+        }
+
+        return 'CERT-' . str_pad($numero, 5, '0', STR_PAD_LEFT);
     }
 
     public function contribuyente()

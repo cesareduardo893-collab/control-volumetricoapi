@@ -67,7 +67,7 @@ class Bitacora extends Model
 
         static::creating(function ($model) {
             if (empty($model->numero_registro)) {
-                $model->numero_registro = 'BIT-' . Str::uuid();
+                $model->numero_registro = self::generarNumeroRegistroSecuencial();
             }
 
             if (!$model->usuario_id && Auth::check()) {
@@ -89,6 +89,24 @@ class Bitacora extends Model
         static::deleting(function () {
             throw new \Exception('No se pueden eliminar registros de bitácora');
         });
+    }
+
+    /**
+     * Generar número de registro secuencial automático
+     */
+    public static function generarNumeroRegistroSecuencial(): string
+    {
+        $ultimoNumero = self::where('numero_registro', 'like', 'BIT-%')
+            ->orderBy('id', 'desc')
+            ->value('numero_registro');
+
+        if ($ultimoNumero) {
+            $numero = intval(str_replace('BIT-', '', $ultimoNumero)) + 1;
+        } else {
+            $numero = 1;
+        }
+
+        return 'BIT-' . str_pad($numero, 6, '0', STR_PAD_LEFT);
     }
 
     public function usuario()

@@ -89,9 +89,27 @@ class Existencia extends Model
 
         static::creating(function ($model) {
             if (empty($model->numero_registro)) {
-                $model->numero_registro = 'EX-' . Str::uuid();
+                $model->numero_registro = self::generarNumeroRegistroSecuencial();
             }
         });
+    }
+
+    /**
+     * Generar número de registro secuencial automático
+     */
+    public static function generarNumeroRegistroSecuencial(): string
+    {
+        $ultimoNumero = self::where('numero_registro', 'like', 'EX-%')
+            ->orderBy('id', 'desc')
+            ->value('numero_registro');
+
+        if ($ultimoNumero) {
+            $numero = intval(str_replace('EX-', '', $ultimoNumero)) + 1;
+        } else {
+            $numero = 1;
+        }
+
+        return 'EX-' . str_pad($numero, 6, '0', STR_PAD_LEFT);
     }
 
     public function tanque()

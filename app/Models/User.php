@@ -17,6 +17,8 @@ class User extends Authenticatable
         'nombres',
         'apellidos',
         'email',
+        'google_id',
+        'google_avatar',
         'telefono',
         'direccion',
         'email_verified_at',
