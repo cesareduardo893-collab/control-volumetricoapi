@@ -24,7 +24,7 @@ class ContribuyenteSeeder extends Seeder
                 'caracter_actua_id' => 1,
                 'numero_permiso' => 'PERM-2024-001',
                 'tipo_permiso' => 'Distribuidor',
-                'proveedor_equipos_rfc' => 'EQURFC880101ABC',
+                'proveedor_equipos_rfc' => 'EQU880101ABC',
                 'proveedor_equipos_nombre' => 'Equipos de Medición SA de CV',
                 'certificados_vigentes' => json_encode(['certificado_1.pdf', 'certificado_2.pdf']),
                 'ultima_verificacion' => '2024-01-15',
@@ -33,7 +33,7 @@ class ContribuyenteSeeder extends Seeder
                 'activo' => true,
                 'fecha_registro' => '2020-01-01',
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
         ];
 

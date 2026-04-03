@@ -2,21 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Contribuyente;
-use App\Models\Instalacion;
 use App\Models\Alarma;
+use App\Models\Contribuyente;
+use App\Models\Dispensario;
 use App\Models\Existencia;
+use App\Models\Instalacion;
+use App\Models\Manguera;
+use App\Models\Medidor;
 use App\Models\MovimientoDia;
 use App\Models\Producto;
 use App\Models\RegistroVolumetrico;
 use App\Models\Tanque;
-use App\Models\Medidor;
-use App\Models\Dispensario;
-use App\Models\Manguera;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
@@ -28,39 +28,37 @@ class DashboardController extends Controller
         // Conteos principales
         $contribuyentesTotal = Contribuyente::withTrashed()->count();
         $contribuyentesActivos = Contribuyente::where('activo', true)->count();
-        
+
         $instalacionesTotal = Instalacion::withTrashed()->count();
         $instalacionesActivas = Instalacion::where('activo', true)
             ->where('estatus', 'OPERACION')
             ->count();
-        
-        $alarmasActivas = Alarma::where('estado', 'ACTIVA')
-            ->whereNull('fecha_atencion')
-            ->count();
-        
+
+        $alarmasActivas = Alarma::where('atendida', false)->count();
+
         $volumenTotal = DB::table('existencias')->sum('volumen_disponible') ?? 0;
-        
+
         // Conteos de infraestructura
         $tanquesTotal = Tanque::withTrashed()->count();
-        $tanquesOperando = Tanque::where('estado', 'OPERACION')->count();
-        
+        $tanquesOperando = Tanque::where('estado', 'OPERATIVO')->count();
+
         $medidoresTotal = Medidor::withTrashed()->count();
-        $medidoresOperando = Medidor::where('estado', 'OPERACION')->count();
-        
+        $medidoresOperando = Medidor::where('estado', 'OPERATIVO')->count();
+
         $dispensariosTotal = Dispensario::withTrashed()->count();
-        $dispensariosOperando = Dispensario::where('estado', 'OPERACION')->count();
-        
+        $dispensariosOperando = Dispensario::where('estado', 'OPERATIVO')->count();
+
         $manguerasTotal = Manguera::withTrashed()->count();
-        $manguerasOperando = Manguera::where('estado', 'OPERACION')->count();
-        
+        $manguerasOperando = Manguera::where('estado', 'OPERATIVO')->count();
+
         // Registros del día
         $hoy = Carbon::today()->format('Y-m-d');
         $registrosHoy = RegistroVolumetrico::where('fecha', $hoy)->count();
-        
+
         // Usuarios
         $usuariosTotal = User::withTrashed()->count();
         $usuariosActivos = User::where('activo', true)->count();
-        
+
         // Últimos movimientos
         $ultimosMovimientos = RegistroVolumetrico::with(['instalacion', 'producto'])
             ->orderBy('fecha', 'desc')
@@ -70,7 +68,7 @@ class DashboardController extends Controller
             ->map(function ($mov) {
                 return [
                     'id' => $mov->id,
-                    'fecha_movimiento' => $mov->fecha ? $mov->fecha->format('d/m/Y') . ' ' . ($mov->hora_inicio ?? '') : 'N/A',
+                    'fecha_movimiento' => $mov->fecha ? $mov->fecha->format('d/m/Y').' '.($mov->hora_inicio ?? '') : 'N/A',
                     'instalacion' => $mov->instalacion ? $mov->instalacion->nombre : 'N/A',
                     'producto' => $mov->producto ? $mov->producto->nombre : 'N/A',
                     'tipo_movimiento' => $mov->tipo_registro ?? $mov->operacion,
@@ -87,7 +85,7 @@ class DashboardController extends Controller
             'instalaciones_total' => $instalacionesTotal,
             'alarmas_activas' => $alarmasActivas,
             'volumen_total' => floatval($volumenTotal),
-            
+
             // Infraestructura
             'tanques_total' => $tanquesTotal,
             'tanques_operando' => $tanquesOperando,
@@ -97,21 +95,21 @@ class DashboardController extends Controller
             'dispensarios_operando' => $dispensariosOperando,
             'mangueras_total' => $manguerasTotal,
             'mangueras_operando' => $manguerasOperando,
-            
+
             // Registros
             'registros_hoy' => $registrosHoy,
-            
+
             // Usuarios
             'usuarios_total' => $usuariosTotal,
             'usuarios_activos' => $usuariosActivos,
-            
+
             // Movimientos
             'ultimos_movimientos' => $ultimosMovimientos,
         ];
 
         return response()->json([
             'success' => true,
-            'data'    => $data,
+            'data' => $data,
         ]);
     }
 
@@ -121,9 +119,9 @@ class DashboardController extends Controller
     public function tiempoReal()
     {
         $hoy = Carbon::today();
-        
+
         $movimientosHoy = MovimientoDia::whereDate('created_at', $hoy)->get();
-        
+
         $volumenTotal = $movimientosHoy->sum('volumen') ?? 0;
         $flujoPromedio = $movimientosHoy->avg('presion') ?? 0;
         $temperaturaPromedio = $movimientosHoy->avg('temperatura') ?? 0;
@@ -139,7 +137,7 @@ class DashboardController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $data,
+            'data' => $data,
         ]);
     }
 
@@ -150,7 +148,7 @@ class DashboardController extends Controller
     {
         $dias = $request->get('dias', 7);
         $fechaInicio = Carbon::now()->subDays($dias)->format('Y-m-d');
-        
+
         $movimientos = RegistroVolumetrico::where('fecha', '>=', $fechaInicio)
             ->orderBy('fecha')
             ->get()
@@ -165,11 +163,19 @@ class DashboardController extends Controller
         for ($i = $dias - 1; $i >= 0; $i--) {
             $fecha = Carbon::now()->subDays($i)->format('Y-m-d');
             $labels[] = Carbon::parse($fecha)->format('d/m');
-            
+
             $data = $movimientos->get($fecha);
-            $entradasTemp = $data ? $data->whereIn('tipo_registro', ['RECEPCION', 'ENTRADA'])->sum('volumen_operacion') : 0;
-            $salidasTemp = $data ? $data->whereIn('tipo_registro', ['VENTA', 'ENTREGA', 'SALIDA'])->sum('volumen_operacion') : 0;
-            
+            $entradasTemp = $data ? $data->filter(function ($item) {
+                $op = strtolower($item->operacion ?? '');
+
+                return in_array($op, ['recepcion', 'entrada']);
+            })->sum('volumen_operacion') : 0;
+            $salidasTemp = $data ? $data->filter(function ($item) {
+                $op = strtolower($item->operacion ?? '');
+
+                return in_array($op, ['venta', 'entrega', 'salida']);
+            })->sum('volumen_operacion') : 0;
+
             $entradas[] = floatval($entradasTemp);
             $salidas[] = floatval($salidasTemp);
         }

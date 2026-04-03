@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             DispensarioSeeder::class,
             MangueraSeeder::class,
             ExistenciaSeeder::class,
+            RegistroVolumetricoSeeder::class,
             BitacoraSeeder::class,
             AlarmaSeeder::class,
         ]);

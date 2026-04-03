@@ -13,7 +13,7 @@ class ProductoSeeder extends Seeder
             [
                 'clave_sat' => '15101501',
                 'codigo' => 'GAS-REG',
-                'clave_identificacion' => 'GASOLINA_REGULAR',
+                'clave_identificacion' => 'GAS-REG',
                 'nombre' => 'Gasolina Regular Magna',
                 'descripcion' => 'Gasolina regular con 87 octanos',
                 'unidad_medida' => 'Litro',
@@ -44,12 +44,12 @@ class ProductoSeeder extends Seeder
                 'color_identificacion' => '#FF0000',
                 'activo' => true,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'clave_sat' => '15101502',
                 'codigo' => 'GAS-PRE',
-                'clave_identificacion' => 'GASOLINA_PREMIUM',
+                'clave_identificacion' => 'GAS-PRE',
                 'nombre' => 'Gasolina Premium',
                 'descripcion' => 'Gasolina premium con 93 octanos',
                 'unidad_medida' => 'Litro',
@@ -80,7 +80,7 @@ class ProductoSeeder extends Seeder
                 'color_identificacion' => '#FF8800',
                 'activo' => true,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'clave_sat' => '15101601',
@@ -116,7 +116,7 @@ class ProductoSeeder extends Seeder
                 'color_identificacion' => '#008800',
                 'activo' => true,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
         ];
 

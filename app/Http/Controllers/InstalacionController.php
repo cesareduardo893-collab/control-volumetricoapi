@@ -3,15 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Bitacora;
-use App\Models\Instalacion;
 use App\Models\Contribuyente;
-use App\Models\Tanque;
-use App\Models\Medidor;
-use App\Models\Dispensario;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\DB;
+use App\Models\Instalacion;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class InstalacionController extends BaseController
 {
@@ -98,7 +95,7 @@ class InstalacionController extends BaseController
 
             // Validar contribuyente activo
             $contribuyente = Contribuyente::find($request->contribuyente_id);
-            if (!$contribuyente || !$contribuyente->activo) {
+            if (! $contribuyente || ! $contribuyente->activo) {
                 return $this->error('El contribuyente no está activo', 422);
             }
 
@@ -124,6 +121,8 @@ class InstalacionController extends BaseController
                 'activo' => $request->boolean('activo', true),
             ]);
 
+            DB::commit();
+
             $this->logActivity(
                 auth()->id(),
                 Bitacora::TIPO_EVENTO_ADMINISTRACION,
@@ -134,13 +133,12 @@ class InstalacionController extends BaseController
                 $instalacion->id
             );
 
-            DB::commit();
-
             return $this->success($instalacion->load('contribuyente'), 'Instalación creada exitosamente', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->error('Error al crear instalación: ' . $e->getMessage(), 500);
+
+            return $this->error('Error al crear instalación: '.$e->getMessage(), 500);
         }
     }
 
@@ -151,24 +149,24 @@ class InstalacionController extends BaseController
     {
         $instalacion = Instalacion::with([
             'contribuyente',
-            'tanques' => function($q) {
+            'tanques' => function ($q) {
                 $q->with('producto')->orderBy('identificador');
             },
-            'medidores' => function($q) {
+            'medidores' => function ($q) {
                 $q->orderBy('numero_serie');
             },
-            'dispensarios' => function($q) {
+            'dispensarios' => function ($q) {
                 $q->with('mangueras')->orderBy('clave');
             },
-            'reportesSat' => function($q) {
+            'reportesSat' => function ($q) {
                 $q->latest()->limit(6);
             },
-            'alarmas' => function($q) {
+            'alarmas' => function ($q) {
                 $q->latest()->limit(10);
-            }
+            },
         ])->find($id);
 
-        if (!$instalacion) {
+        if (! $instalacion) {
             return $this->error('Instalación no encontrada', 404);
         }
 
@@ -185,7 +183,7 @@ class InstalacionController extends BaseController
     {
         $instalacion = Instalacion::find($id);
 
-        if (!$instalacion) {
+        if (! $instalacion) {
             return $this->error('Instalación no encontrada', 404);
         }
 
@@ -238,7 +236,8 @@ class InstalacionController extends BaseController
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->error('Error al actualizar instalación: ' . $e->getMessage(), 500);
+
+            return $this->error('Error al actualizar instalación: '.$e->getMessage(), 500);
         }
     }
 
@@ -249,7 +248,7 @@ class InstalacionController extends BaseController
     {
         $instalacion = Instalacion::find($id);
 
-        if (!$instalacion) {
+        if (! $instalacion) {
             return $this->error('Instalación no encontrada', 404);
         }
 
@@ -289,7 +288,8 @@ class InstalacionController extends BaseController
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->error('Error al eliminar instalación: ' . $e->getMessage(), 500);
+
+            return $this->error('Error al eliminar instalación: '.$e->getMessage(), 500);
         }
     }
 
@@ -300,7 +300,7 @@ class InstalacionController extends BaseController
     {
         $instalacion = Instalacion::find($id);
 
-        if (!$instalacion) {
+        if (! $instalacion) {
             return $this->error('Instalación no encontrada', 404);
         }
 
@@ -331,7 +331,7 @@ class InstalacionController extends BaseController
     {
         $instalacion = Instalacion::find($id);
 
-        if (!$instalacion) {
+        if (! $instalacion) {
             return $this->error('Instalación no encontrada', 404);
         }
 
@@ -366,7 +366,7 @@ class InstalacionController extends BaseController
     {
         $instalacion = Instalacion::find($id);
 
-        if (!$instalacion) {
+        if (! $instalacion) {
             return $this->error('Instalación no encontrada', 404);
         }
 
@@ -393,7 +393,7 @@ class InstalacionController extends BaseController
     {
         $instalacion = Instalacion::with(['contribuyente'])->find($id);
 
-        if (!$instalacion) {
+        if (! $instalacion) {
             return $this->error('Instalación no encontrada', 404);
         }
 
@@ -409,7 +409,7 @@ class InstalacionController extends BaseController
         $medidores = $instalacion->medidores;
         $medidoresOperativos = $medidores->where('estado', 'OPERATIVO')->count();
         $medidoresCalibracionProxima = $medidores->filter(function ($m) {
-            return $m->fecha_proxima_calibracion && 
+            return $m->fecha_proxima_calibracion &&
                    Carbon::parse($m->fecha_proxima_calibracion)->lte(Carbon::now()->addDays(30));
         })->count();
 
@@ -480,7 +480,7 @@ class InstalacionController extends BaseController
                 'total' => $medidores->count(),
                 'operativos' => $medidores->where('estado', 'OPERATIVO')->count(),
                 'calibracion_proxima' => $medidores->filter(function ($m) use ($hoy) {
-                    return $m->fecha_proxima_calibracion && 
+                    return $m->fecha_proxima_calibracion &&
                            Carbon::parse($m->fecha_proxima_calibracion)->lte($hoy->copy()->addDays(30));
                 })->count(),
             ],
@@ -498,24 +498,24 @@ class InstalacionController extends BaseController
     {
         $search = $request->get('search', '');
         $contribuyenteId = $request->get('contribuyente_id');
-        
-        if (strlen($search) < 2 && !$contribuyenteId) {
+
+        if (strlen($search) < 2 && ! $contribuyenteId) {
             return $this->success([], 'Escriba al menos 2 caracteres o seleccione un contribuyente');
         }
 
         $query = Instalacion::where('activo', true);
-        
+
         if ($contribuyenteId) {
             $query->where('contribuyente_id', $contribuyenteId);
         }
-        
+
         if (strlen($search) >= 2) {
             $query->where(function ($q) use ($search) {
                 $q->where('nombre', 'LIKE', "%{$search}%")
-                  ->orWhere('clave_instalacion', 'LIKE', "%{$search}%");
+                    ->orWhere('clave_instalacion', 'LIKE', "%{$search}%");
             });
         }
-        
+
         $instalaciones = $query
             ->select('id', 'clave_instalacion', 'nombre', 'domicilio', 'contribuyente_id')
             ->orderBy('nombre')
